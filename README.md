@@ -1,0 +1,1 @@
+# autogoal-core
