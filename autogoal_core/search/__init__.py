@@ -8,5 +8,5 @@ from ._base import (
     JsonLogger,
 )
 from ._random import RandomSearch
-from ._pge import  PESearch
+from ._pge import PESearch
 from ._nspge import NSPESearch

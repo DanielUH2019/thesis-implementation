@@ -1,4 +1,3 @@
-
 from autogoal_core.search._base import SearchAlgorithm
 from autogoal_core.sampling import Sampler
 

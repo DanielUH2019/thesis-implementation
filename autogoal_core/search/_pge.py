@@ -1,4 +1,3 @@
-
 from typing import Optional, Dict, List
 from autogoal_core.sampling import (
     ModelSampler,

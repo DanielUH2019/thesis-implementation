@@ -298,8 +298,6 @@ class Seq(SemanticType):
 # internal type, and a dense/sparse flag.
 
 
-
-
 # These instances represent the two types of tensorial structure.
 
 

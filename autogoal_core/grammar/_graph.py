@@ -260,8 +260,10 @@ class GraphGrammar(Grammar):
             initializer = self._initializer
 
         if kwargs is not None:
+
             def initializer_fn(cls):
                 return cls(**kwargs)
+
             initializer = initializer_fn
 
         if isinstance(pattern, str):
