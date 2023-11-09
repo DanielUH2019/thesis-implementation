@@ -1,4 +1,3 @@
-from autogoal_core.utils._package_helper import find_packages
 
 
 def resolve(cls_name, contrib_name):

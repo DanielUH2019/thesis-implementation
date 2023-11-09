@@ -137,7 +137,7 @@ def nice_repr(cls):
             import black
 
             return black.format_str(fr, mode=black.FileMode()).strip()
-        except:
+        except Exception:
             return fr
 
     cls.__repr__ = repr_method

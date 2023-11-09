@@ -4,10 +4,8 @@ import abc
 import types
 import warnings
 import yaml
-import glob
 from typing import Any, Dict, List, Set, Tuple, Type
 from pathlib import Path
-import types
 import os
 import shutil
 
@@ -18,7 +16,6 @@ from autogoal_core.kb._semantics import SemanticType, Seq
 from autogoal_core.utils import (
     AlgorithmConfig,
     get_contrib,
-    generate_installer,
     loads,
     dumps,
 )

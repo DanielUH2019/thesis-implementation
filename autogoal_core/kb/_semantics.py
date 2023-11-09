@@ -13,12 +13,15 @@
 
 # We will never really instantiate these classes, just use them for annotations.
 
-from functools import reduce
 import inspect
 import copyreg
 from typing import Type
 import json
 
+from numpy import ndarray, array
+from scipy.sparse import spmatrix
+from json import JSONEncoder
+import numpy
 
 # We start by defining the base class of our hierarchy.
 # A `SemanticType` is just a class that knows how to do one thing: determine if a given object
@@ -295,10 +298,7 @@ class Seq(SemanticType):
 # internal type, and a dense/sparse flag.
 
 
-from numpy import ndarray, array
-from scipy.sparse import spmatrix
-from json import JSONEncoder
-import numpy
+
 
 # These instances represent the two types of tensorial structure.
 

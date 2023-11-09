@@ -1,5 +1,4 @@
 import functools
-import logging
 import enlighten
 import time
 import datetime
@@ -10,12 +9,11 @@ import json
 
 import autogoal_core.logging
 
-from autogoal_core.utils import RestrictedWorkerByJoin, Min, Gb, Sec
+from autogoal_core.utils import RestrictedWorkerByJoin, Min, Gb
 from autogoal_core.sampling import ReplaySampler
 from rich.progress import Progress
 from rich.panel import Panel
 
-from typing import List, Tuple
 from autogoal_core.search.utils import dominates, non_dominated_sort
 
 
@@ -522,7 +520,7 @@ class RichLogger(Logger):
         )
 
     def end(self, best_solutions, best_fns):
-        self.console.rule(f"Search finished")
+        self.console.rule("Search finished")
 
         if len(best_fns) == 0:
             self.console.print(self.error("No solutions found"))
@@ -619,7 +617,7 @@ class MemoryLogger(Logger):
     def finish_generation(self, fns):
         try:
             mean = statistics.mean(fns)
-        except:
+        except Exception:
             mean = 0
         self.generation_mean_fn.append(mean)
         self.generation_best_fn.append(self.generation_best_fn[-1])

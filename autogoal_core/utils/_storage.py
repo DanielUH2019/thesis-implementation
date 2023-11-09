@@ -1,4 +1,3 @@
-from typing import List
 import yaml
 import dill
 import pickle
@@ -28,7 +27,7 @@ def encode(code: str):
 def ensure_directory(path):
     try:
         os.makedirs(path)
-    except:
+    except Exception:
         shutil.rmtree(path)
         os.makedirs(path)
 

@@ -512,9 +512,9 @@ def update_model(model, updates, alpha: float = 1):
     return new_model
 
 
-def _argsort(l):
+def _argsort(L):
     # taken from https://stackoverflow.com/questions/6422700
-    return sorted(range(len(l)), key=l.__getitem__)
+    return sorted(range(len(L)), key=L.__getitem__)
 
 
 def best_indices(values: List, k: int = 1, maximize: bool = False) -> List[int]:
@@ -589,7 +589,7 @@ def merge_updates(*updates: Sequence[Dict]) -> Dict:
 
     for upd in updates:
         for key, value in upd.items():
-            if not key in result:
+            if key not in result:
                 result[key] = []
 
             result[key].extend(value)

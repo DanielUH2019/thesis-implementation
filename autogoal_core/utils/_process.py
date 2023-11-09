@@ -1,10 +1,8 @@
-from logging import log
 import multiprocessing
 import warnings
 import psutil
 import signal
 import os
-import traceback
 import logging
 import platform
 from numpy.core._exceptions import _ArrayMemoryError

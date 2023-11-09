@@ -419,7 +419,7 @@ class CategoricalValue:
 
 class BooleanValue:
     def __repr__(self):
-        return f"BooleanValue()"
+        return "BooleanValue()"
 
     @staticmethod
     def generate_cfg(grammar, head):

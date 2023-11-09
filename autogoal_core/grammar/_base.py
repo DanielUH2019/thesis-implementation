@@ -1,4 +1,3 @@
-import random
 
 from autogoal_core.sampling import Sampler
 

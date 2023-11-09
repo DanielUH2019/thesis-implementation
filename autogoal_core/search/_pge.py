@@ -1,7 +1,5 @@
-import statistics
-import abc
 
-from typing import Mapping, Optional, Dict, List, Sequence
+from typing import Optional, Dict, List
 from autogoal_core.sampling import (
     ModelSampler,
     best_indices,
@@ -71,7 +69,7 @@ class PESearch(SearchAlgorithm):
         self._model = update_model(self._model, updates, self._learning_factor)
 
         # save an internal state of metaheuristic for other executions
-        if self._save == True:
+        if self._save is True:
             with open("model-" + self._name + ".pickle", "wb") as f:
                 pickle.dump(self._model, f)
 
