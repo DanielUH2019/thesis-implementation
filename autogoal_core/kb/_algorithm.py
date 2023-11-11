@@ -121,17 +121,20 @@ class Algorithm(abc.ABC):
     Users should inherit from `AlgorithmBase` instead of this class.
     """
 
-    @abc.abstractclassmethod
+    @abc.abstractmethod
+    @classmethod
     def input_types(cls) -> Tuple[type]:
         """Returns an ordered list of the expected semantic input types of the `run` method."""
         pass
-
-    @abc.abstractclassmethod
+    
+    @abc.abstractmethod
+    @classmethod
     def input_args(cls) -> Tuple[str]:
         """Returns an ordered tuple of the names of the arguments in the `run` method."""
         pass
 
-    @abc.abstractclassmethod
+    @abc.abstractmethod
+    @classmethod
     def output_type(cls) -> type:
         """Returns an ordered list of the expected semantic output type of the `run` method."""
         pass
@@ -142,7 +145,7 @@ class Algorithm(abc.ABC):
         pass
 
     @classmethod
-    def is_compatible_with(cls: "Algorithm", input_types):
+    def is_compatible_with(cls, input_types):
         """
         Determines if the current algorithm is compatible with a set of input types,
         i.e., if among those types we can find all the necessary inputs for this algorithm.
