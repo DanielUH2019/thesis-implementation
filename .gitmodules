@@ -1,0 +1,4 @@
+[submodule "dspy"]
+	path = dspy
+	url = https://github.com/DanielUH2019/dspy
+	branch = llama-cpp
