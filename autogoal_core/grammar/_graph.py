@@ -283,10 +283,11 @@ class GraphGrammar(Grammar):
         if symbol is None:
             raise ValueError("`symbol` cannot be `None`")
 
-        symbol = symbol.copy()
+        copied_symbol = symbol.copy()
+        assert isinstance(copied_symbol, Graph)
 
         while max_iterations > 0:
-            valid_productions = [p for p in self._productions if p.match(symbol)]
+            valid_productions = [p for p in self._productions if p.match(copied_symbol)]
 
             if self._non_terminals:
                 non_terminal_productions = [
@@ -299,15 +300,15 @@ class GraphGrammar(Grammar):
                     valid_productions = non_terminal_productions
 
             if not valid_productions:
-                return symbol
+                return copied_symbol
 
             production_ids = {p.production_id: p for p in valid_productions}
             production = production_ids[sampler.choice(list(production_ids))]
-            symbol = production.apply(symbol)
+            copied_symbol = production.apply(copied_symbol)
 
             max_iterations -= 1
 
-        return symbol
+        return copied_symbol
 
     def __repr__(self):
         return repr(self._productions)

@@ -10,7 +10,7 @@ from numpy.core._exceptions import _ArrayMemoryError
 if platform.system() == "Linux":
     import resource
 
-from .utils import Mb
+from autogoal_core.utils._helpers import Mb
 
 logger = logging.getLogger("autogoal")
 

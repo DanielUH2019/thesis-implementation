@@ -3,7 +3,7 @@ from ._process import (
     RestrictedWorkerByJoin,
     RestrictedWorkerWithState,
 )
-from ._helpers import factory, flatten, Gb, Hour, Kb, Mb, Min, nice_repr, optimize, Sec
+from ._helpers import factory, flatten, Gb, Hour, Kb, Mb, Min, nice_repr, Sec
 from ._dynamic import dynamic_call, dynamic_import
 from ._storage import (
     create_zip_file,

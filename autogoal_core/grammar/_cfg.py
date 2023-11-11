@@ -1,5 +1,5 @@
 import inspect
-from typing import List, Dict, Set
+from typing import List, Dict, Optional, Set
 
 from autogoal_core.grammar._base import Grammar
 
@@ -307,7 +307,7 @@ def generate_cfg(cls, registry=None) -> ContextFreeGrammar:
 
 
 def _generate_cfg(
-    cls, grammar: ContextFreeGrammar = None, head: Symbol = None, registry=None
+    cls, grammar: Optional[ContextFreeGrammar] = None, head: Optional[Symbol] = None, registry=None
 ) -> ContextFreeGrammar:
     symbol = head or Symbol(cls.__name__)
 
