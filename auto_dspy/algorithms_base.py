@@ -2,7 +2,7 @@ import abc
 from typing import Tuple
 from dspy.signatures.field import InputField
 from dspy.signatures.signature import Signature
-from autogoal_core.kb._algorithm import Algorithm, Pipeline, PipelineNode, PipelineSpace
+from autogoal_core.kb._algorithm import Algorithm, Pipeline, PipelineNode, PipelineSpace, make_seq_algorithm
 import networkx as nx
 from autogoal_core.utils import nice_repr
 from autogoal_core.grammar import Graph, GraphSpace, generate_cfg, Union, Symbol
@@ -76,7 +76,7 @@ def build_pipeline_graph(
 ) -> PipelineSpace:
     """Build a graph of algorithms.
 
-    Every node in the graph corresponds to a <autogoal_core.grammar.ContextFreeGrammar> that
+    Every node in the graph corresponds to a <autogoal.grammar.ContextFreeGrammar> that
     generates an instance of a class with a `run` method.
 
     Each `run` method must declare input and output types in the form:
@@ -90,12 +90,12 @@ def build_pipeline_graph(
 
     # We start by enlarging the registry with all Seq[...] algorithms
 
-    # pool = set(registry)
+    pool = set(registry)
 
-    # for algorithm in registry:
-    #     for _ in range(max_list_depth):
-    #         algorithm = make_seq_algorithm(algorithm)
-    #         pool.add(algorithm)
+    for algorithm in registry:
+        for _ in range(max_list_depth):
+            algorithm = make_seq_algorithm(algorithm)
+            pool.add(algorithm)
 
     # For building the graph, we'll keep at each node the guaranteed output types
 
@@ -103,7 +103,7 @@ def build_pipeline_graph(
     # those that can process a subset of the input_types
     open_nodes: list[PipelineNode] = []
 
-    for algorithm in registry:
+    for algorithm in pool:
         if not algorithm.is_compatible_with(input_types):
             continue
 
@@ -135,7 +135,7 @@ def build_pipeline_graph(
         node_output_type = node.algorithm.output_type()
 
         # Here are all the algorithms that could be added new at this point in the graph
-        for algorithm in registry:
+        for algorithm in pool:
             if not algorithm.is_compatible_with(guaranteed_types):
                 continue
 
@@ -144,13 +144,13 @@ def build_pipeline_graph(
                 continue
 
             # And we never want an algorithm that doesn't provide a novel output type...
-            # if (
-            #     algorithm.output_type() in guaranteed_types
-            #     and
-            #     # ... unless it is an idempotent algorithm
-            #     tuple([algorithm.output_type()]) != algorithm.input_types()
-            # ):
-            #     continue
+            if (
+                algorithm.output_type() in guaranteed_types
+                and
+                # ... unless it is an idempotent algorithm
+                tuple([algorithm.output_type()]) != algorithm.input_types()
+            ):
+                continue
 
             # BUG: this validation ensures no redundant nodes are added.
             #      The downside is that it prevents pipelines that need two algorithms
