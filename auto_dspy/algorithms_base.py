@@ -11,7 +11,7 @@ from autogoal_core.kb._algorithm import (
 import networkx as nx
 from autogoal_core.utils import nice_repr
 from autogoal_core.grammar import Graph, GraphSpace, generate_cfg, Union, Symbol
-from guidance import models, gen
+import guidance
 
 
 class AlgorithmSignature(Signature):
@@ -126,19 +126,57 @@ class Pipeline:
 
 class PipelineSpaceBuilder:
     def __init__(self, path_to_llm) -> None:
-        self.model = models.LlamaCpp(path_to_llm)
+        self.model = guidance.models.LlamaCpp(path_to_llm)
 
-    def create_start_edges(self, G, input_instruction: str, registry: list[Algorithm]):
-        """Creates the start edges of the graph from the input instruction using an llm that infers what signatures are compatible to the start node."""
+    def find_initial_valid_nodes(
+        self, input_instruction: str, algorithms_pool: set[DspyAlgorithmBase]
+    ) -> list[PipelineNode]:
+        """Find the nodes of the graph that are valid to stablish an edge from the start node representing the input instruction using an llm that infers what signatures are compatible to the start node."""
 
-        context = ""
+        initial_valid_nodes = []
+        context = """\
+        A signature is a declarative specification of input/output behavior of a DSPy module.\
 
+        Instead of investing effort into how to get your LM to do a sub-task, signatures enable you to inform DSPy what the sub-task is. Later, the DSPy compiler will figure out how to build a complex prompt for your large LM (or finetune your small LM) specifically for your signature, on your data, and within your pipeline.\
+
+        A signature consists of three simple elements:\
+
+        A minimal description of the sub-task the LM is supposed to solve.\
+        A description of one or more input fields (e.g., input question) that will we will give to the LM.\
+        A description of one or more output fields (e.g., the question's answer) that we will expect from the LM.\
+
+        """
+        for a in algorithms_pool:
+            current_signature = a.get_signature()
+            instruction = f"""\
+                Given the instruction: {input_instruction}\
+                can the following signature be used: {current_signature}
+            """
+            lm = (
+                context
+                + instruction
+                + f"Answer: {guidance.select(['yes', 'no'], name='answer')}"
+            )
+
+            if lm["answer"] == "no":
+                continue
+
+            initial_valid_nodes.append(
+                PipelineNode(
+                    algorithm=a,
+                    input_types=a.get_signature().input_fields(),
+                    output_types=a.get_signature().output_fields(),
+                    registry=algorithms_pool,
+                )
+            )
+
+        return initial_valid_nodes
 
     def build_pipeline_graph(
         self,
-        input_types: list[type],
+        input_instruction: str,
         output_type: type,
-        registry: list[Algorithm],
+        registry: list[DspyAlgorithmBase],
         max_list_depth: int = 3,
     ) -> PipelineSpace:
         """Build a graph of algorithms.
@@ -152,8 +190,8 @@ class PipelineSpaceBuilder:
                 # ...
         """
 
-        if not isinstance(input_types, (list, tuple)):
-            input_types = [input_types]
+        # if not isinstance(input_types, (list, tuple)):
+        #     input_types = [input_types]
 
         # We start by enlarging the registry with all Seq[...] algorithms
 
@@ -168,32 +206,21 @@ class PipelineSpaceBuilder:
 
         # We start by collecting all the possible input nodes,
         # those that can process a subset of the input_types
-        open_nodes: list[PipelineNode] = []
-
-        for algorithm in pool:
-            if not algorithm.is_compatible_with(input_types):
-                continue
-
-            open_nodes.append(
-                PipelineNode(
-                    algorithm=algorithm,
-                    input_types=input_types,
-                    output_types=set(input_types) | set([algorithm.output_type()]),
-                    registry=registry,
-                )
-            )
+        initial_valid_nodes: list[PipelineNode] = self.find_initial_valid_nodes(
+            input_instruction, pool
+        )
 
         G = Graph()
 
-        for node in open_nodes:
+        for node in initial_valid_nodes:
             G.add_edge(GraphSpace.Start, node)
 
         # We'll make a BFS exploration of the pipeline space.
         # For every open node we will add to the graph every node to which it can connect.
         closed_nodes = set()
 
-        while open_nodes:
-            node = open_nodes.pop(0)
+        while initial_valid_nodes:
+            node = initial_valid_nodes.pop(0)
 
             # These are the types that are available at this node
             guaranteed_types = node.output_types
@@ -241,8 +268,8 @@ class PipelineSpaceBuilder:
 
                 G.add_edge(node, p)
 
-                if p not in closed_nodes and p not in open_nodes:
-                    open_nodes.append(p)
+                if p not in closed_nodes and p not in initial_valid_nodes:
+                    initial_valid_nodes.append(p)
 
             # Now we check to see if this node is a possible output
             if issubclass(node.algorithm.output_type(), output_type):
