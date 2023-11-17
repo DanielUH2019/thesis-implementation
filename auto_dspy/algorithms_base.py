@@ -1,16 +1,21 @@
 import abc
-from typing import Tuple
+from typing import Any, Optional, Tuple
 from dspy.signatures.field import InputField
 from dspy.signatures.signature import Signature
-from autogoal_core.kb._algorithm import Algorithm, Pipeline, PipelineNode, PipelineSpace, make_seq_algorithm
+from autogoal_core.kb._algorithm import (
+    Algorithm,
+    PipelineNode,
+    PipelineSpace,
+    make_seq_algorithm,
+)
 import networkx as nx
 from autogoal_core.utils import nice_repr
 from autogoal_core.grammar import Graph, GraphSpace, generate_cfg, Union, Symbol
+from guidance import models, gen
 
 
 class AlgorithmSignature(Signature):
-    @classmethod
-    def inputs_fields_to_output(cls) -> dict[str, InputField]:
+    def inputs_fields_to_maintain(self) -> dict[str, InputField]:
         return {}
 
 
@@ -19,7 +24,7 @@ class DspyAlgorithmBase(Algorithm):
 
     @classmethod
     @abc.abstractmethod
-    def get_signature(cls) -> AlgorithmSignature:
+    def get_signature(cls) -> type[AlgorithmSignature]:
         pass
 
     @classmethod
@@ -41,12 +46,12 @@ class DspyAlgorithmBase(Algorithm):
             [v.annotation for v in cls.get_signature().output_fields().values()]
             + [
                 v.annotation
-                for v in cls.get_signature().inputs_fields_to_output().values()
+                for v in cls.get_signature().inputs_fieldds_to_output().values()
             ]
         )
 
     @abc.abstractmethod
-    def run(self, **kwargs):
+    def run(self, **kwargs) -> dict[str, Any]:
         """Executes the algorithm."""
         pass
 
@@ -68,129 +73,191 @@ class DspyAlgorithmBase(Algorithm):
         return True
 
 
-def build_pipeline_graph(
-    input_types: list[type],
-    output_type: type,
-    registry: list[Algorithm],
-    max_list_depth: int = 3,
-) -> PipelineSpace:
-    """Build a graph of algorithms.
+def build_input_args(
+    algorithm: DspyAlgorithmBase, values: dict[str, Any]
+) -> dict[str, Any]:
+    """Buils the correct input mapping for `algorithm` using the provided `values` mapping types to objects."""
+    inputs = {
+        k: v for k, v in algorithm.get_signature().kwargs if isinstance(v, InputField)
+    }
+    result = {k: v for k, v in values if k in inputs}
+    assert len(inputs) == result  # Cannot find compatible input value
+    return result
 
-    Every node in the graph corresponds to a <autogoal.grammar.ContextFreeGrammar> that
-    generates an instance of a class with a `run` method.
 
-    Each `run` method must declare input and output types in the form:
+@nice_repr
+class Pipeline:
+    """Represents a sequence of algorithms.
 
-        def run(self, a: type_1, b: type_2, ...) -> type_n:
-            # ...
+    Each algorithm must have a `run` method declaring it's input and output type.
+    The pipeline instance also receives the input and output types.
     """
 
-    if not isinstance(input_types, (list, tuple)):
-        input_types = [input_types]
+    def __init__(
+        self, algorithms: list[DspyAlgorithmBase], input_types: list[AlgorithmSignature]
+    ) -> None:
+        self.algorithms = algorithms
+        self.input_types = input_types
 
-    # We start by enlarging the registry with all Seq[...] algorithms
+    def run(self, instruction):
+        memory: dict[str, Any] = {}
 
-    pool = set(registry)
+        memory["instruction"] = instruction
+        final_output: Optional[Any] = None
 
-    for algorithm in registry:
-        for _ in range(max_list_depth):
-            algorithm = make_seq_algorithm(algorithm)
-            pool.add(algorithm)
+        for i, algorithm in enumerate(self.algorithms):
+            args = build_input_args(algorithm, memory)
+            output = algorithm.run(**args)
+            for k, v in output:
+                memory[k] = v
 
-    # For building the graph, we'll keep at each node the guaranteed output types
-
-    # We start by collecting all the possible input nodes,
-    # those that can process a subset of the input_types
-    open_nodes: list[PipelineNode] = []
-
-    for algorithm in pool:
-        if not algorithm.is_compatible_with(input_types):
-            continue
-
-        open_nodes.append(
-            PipelineNode(
-                algorithm=algorithm,
-                input_types=input_types,
-                output_types=set(input_types) | set([algorithm.output_type()]),
-                registry=registry,
+            inputs_to_maintain = set(
+                algorithm.get_signature().inputs_fields_to_maintain()
             )
-        )
+            inputs_to_delete = set(algorithm.input_args()) - inputs_to_maintain
+            for key in inputs_to_delete:
+                del memory[key]
 
-    G = Graph()
+            if i == len(self.algorithms) - 1:
+                final_output = output
 
-    for node in open_nodes:
-        G.add_edge(GraphSpace.Start, node)
+        return final_output
 
-    # We'll make a BFS exploration of the pipeline space.
-    # For every open node we will add to the graph every node to which it can connect.
-    closed_nodes = set()
 
-    while open_nodes:
-        node = open_nodes.pop(0)
+class PipelineSpaceBuilder:
+    def __init__(self, path_to_llm) -> None:
+        self.model = models.LlamaCpp(path_to_llm)
 
-        # These are the types that are available at this node
-        guaranteed_types = node.output_types
+    def create_start_edges(self, G, input_instruction: str, registry: list[Algorithm]):
+        """Creates the start edges of the graph from the input instruction using an llm that infers what signatures are compatible to the start node."""
 
-        # The node's output type
-        node_output_type = node.algorithm.output_type()
+        context = ""
 
-        # Here are all the algorithms that could be added new at this point in the graph
+
+    def build_pipeline_graph(
+        self,
+        input_types: list[type],
+        output_type: type,
+        registry: list[Algorithm],
+        max_list_depth: int = 3,
+    ) -> PipelineSpace:
+        """Build a graph of algorithms.
+
+        Every node in the graph corresponds to a <autogoal.grammar.ContextFreeGrammar> that
+        generates an instance of a class with a `run` method.
+
+        Each `run` method must declare input and output types in the form:
+
+            def run(self, a: type_1, b: type_2, ...) -> type_n:
+                # ...
+        """
+
+        if not isinstance(input_types, (list, tuple)):
+            input_types = [input_types]
+
+        # We start by enlarging the registry with all Seq[...] algorithms
+
+        pool = set(registry)
+
+        for algorithm in registry:
+            for _ in range(max_list_depth):
+                algorithm = make_seq_algorithm(algorithm)
+                pool.add(algorithm)
+
+        # For building the graph, we'll keep at each node the guaranteed output types
+
+        # We start by collecting all the possible input nodes,
+        # those that can process a subset of the input_types
+        open_nodes: list[PipelineNode] = []
+
         for algorithm in pool:
-            if not algorithm.is_compatible_with(guaranteed_types):
+            if not algorithm.is_compatible_with(input_types):
                 continue
 
-            # We never want to apply the same exact algorithm twice
-            if algorithm == node.algorithm:
-                continue
-
-            # And we never want an algorithm that doesn't provide a novel output type...
-            if (
-                algorithm.output_type() in guaranteed_types
-                and
-                # ... unless it is an idempotent algorithm
-                tuple([algorithm.output_type()]) != algorithm.input_types()
-            ):
-                continue
-
-            # BUG: this validation ensures no redundant nodes are added.
-            #      The downside is that it prevents pipelines that need two algorithms
-            #      to generate the input of another one.
-
-            # And we do not want to ignore the last node's output type
-            is_using_last_output = False
-            for input_type in algorithm.input_types():
-                if issubclass(node_output_type, input_type):
-                    is_using_last_output = True
-                    break
-            if not is_using_last_output:
-                continue
-
-            p = PipelineNode(
-                algorithm=algorithm,
-                input_types=guaranteed_types,
-                output_types=guaranteed_types | set([algorithm.output_type()]),
-                registry=registry,
+            open_nodes.append(
+                PipelineNode(
+                    algorithm=algorithm,
+                    input_types=input_types,
+                    output_types=set(input_types) | set([algorithm.output_type()]),
+                    registry=registry,
+                )
             )
 
-            G.add_edge(node, p)
+        G = Graph()
 
-            if p not in closed_nodes and p not in open_nodes:
-                open_nodes.append(p)
+        for node in open_nodes:
+            G.add_edge(GraphSpace.Start, node)
 
-        # Now we check to see if this node is a possible output
-        if issubclass(node.algorithm.output_type(), output_type):
-            G.add_edge(node, GraphSpace.End)
+        # We'll make a BFS exploration of the pipeline space.
+        # For every open node we will add to the graph every node to which it can connect.
+        closed_nodes = set()
 
-        closed_nodes.add(node)
+        while open_nodes:
+            node = open_nodes.pop(0)
 
-    # Remove all nodes that are not connected to the end node
-    try:
-        reachable_from_end = set(
-            nx.dfs_preorder_nodes(G.reverse(False), GraphSpace.End)
-        )
-        unreachable_nodes = set(G.nodes) - reachable_from_end
-        G.remove_nodes_from(unreachable_nodes)
-    except KeyError:
-        raise TypeError("No pipelines can be found!")
+            # These are the types that are available at this node
+            guaranteed_types = node.output_types
 
-    return PipelineSpace(G, input_types=input_types)
+            # The node's output type
+            node_output_type = node.algorithm.output_type()
+
+            # Here are all the algorithms that could be added new at this point in the graph
+            for algorithm in pool:
+                if not algorithm.is_compatible_with(guaranteed_types):
+                    continue
+
+                # We never want to apply the same exact algorithm twice
+                if algorithm == node.algorithm:
+                    continue
+
+                # And we never want an algorithm that doesn't provide a novel output type...
+                # if (
+                #     algorithm.output_type() in guaranteed_types
+                #     and
+                #     # ... unless it is an idempotent algorithm
+                #     tuple([algorithm.output_type()]) != algorithm.input_types()
+                # ):
+                #     continue
+
+                # BUG: this validation ensures no redundant nodes are added.
+                #      The downside is that it prevents pipelines that need two algorithms
+                #      to generate the input of another one.
+
+                # And we do not want to ignore the last node's output type
+                is_using_last_output = False
+                for input_type in algorithm.input_types():
+                    if issubclass(node_output_type, input_type):
+                        is_using_last_output = True
+                        break
+                if not is_using_last_output:
+                    continue
+
+                p = PipelineNode(
+                    algorithm=algorithm,
+                    input_types=guaranteed_types,
+                    output_types=guaranteed_types | set([algorithm.output_type()]),
+                    registry=registry,
+                )
+
+                G.add_edge(node, p)
+
+                if p not in closed_nodes and p not in open_nodes:
+                    open_nodes.append(p)
+
+            # Now we check to see if this node is a possible output
+            if issubclass(node.algorithm.output_type(), output_type):
+                G.add_edge(node, GraphSpace.End)
+
+            closed_nodes.add(node)
+
+        # Remove all nodes that are not connected to the end node
+        try:
+            reachable_from_end = set(
+                nx.dfs_preorder_nodes(G.reverse(False), GraphSpace.End)
+            )
+            unreachable_nodes = set(G.nodes) - reachable_from_end
+            G.remove_nodes_from(unreachable_nodes)
+        except KeyError:
+            raise TypeError("No pipelines can be found!")
+
+        return PipelineSpace(G, input_types=input_types)
