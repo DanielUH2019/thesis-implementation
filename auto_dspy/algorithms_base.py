@@ -12,6 +12,9 @@ import networkx as nx
 from autogoal_core.utils import nice_repr
 from autogoal_core.grammar import Graph, GraphSpace, generate_cfg, Union, Symbol
 import guidance
+from pydantic import BaseModel, ValidationError, create_model
+from json_schema_to_grammar import SchemaConverter
+from llama_cpp import Llama, LlamaGrammar
 
 
 class AlgorithmSignature(Signature):
@@ -94,19 +97,60 @@ class Pipeline:
     """
 
     def __init__(
-        self, algorithms: list[DspyAlgorithmBase], input_types: list[AlgorithmSignature]
+        self,
+        algorithms: list[DspyAlgorithmBase],
+        input_types: list[AlgorithmSignature],
+        path_to_llm: str,
     ) -> None:
         self.algorithms = algorithms
         self.input_types = input_types
+        self.path_to_llm = path_to_llm
 
-    def run(self, instruction):
+    def _extract_arguments_to_call_initial_algorithm(
+        self, input_instruction: str, algorithm: DspyAlgorithmBase
+    ) -> dict[str, Any]:
+        """Extract arguments related to an AlgorithmSignature from an instruction in natural language using an llm"""
+
+        llm = Llama(self.path_to_llm, n_gpu_layers=-1)
+        instruction = f"""
+        Given the instruction: {input_instruction}
+        And the schema: {algorithm.get_signature().kwargs}
+        Extract information from the instruction that match the schema
+        """
+
+        pydantic_model, grammar_text = self._generate_grammar_from_signature(
+            algorithm.get_signature()
+        )
+        grammar = LlamaGrammar.from_string(grammar_text)
+
+        response = llm(instruction, grammar=grammar)
+        json_response = response["choices"][0]["text"]
+
+        model = pydantic_model.model_validate_json(json_response)
+        return model.model_dump()
+
+    def _generate_grammar_from_signature(
+        self, signature: AlgorithmSignature
+    ) -> tuple[type[BaseModel], str]:
+        fields = {k: (v.annotation, ...) for k, v in signature.kwargs}
+        DynamicSignatureModel = create_model("DynamicSignatureModel", **fields)
+        return DynamicSignatureModel, SchemaConverter.from_pydantic_model(
+            DynamicSignatureModel, None
+        )
+
+    def run(self, input_instruction: str):
         memory: dict[str, Any] = {}
 
-        memory["instruction"] = instruction
+        memory["instruction"] = input_instruction
         final_output: Optional[Any] = None
 
         for i, algorithm in enumerate(self.algorithms):
-            args = build_input_args(algorithm, memory)
+            if i == 0:
+                args = self._extract_arguments_to_call_initial_algorithm(
+                    input_instruction, algorithm
+                )
+            else:
+                args = build_input_args(algorithm, memory)
             output = algorithm.run(**args)
             for k, v in output:
                 memory[k] = v
@@ -171,6 +215,9 @@ class PipelineSpaceBuilder:
             )
 
         return initial_valid_nodes
+
+    def _extract_arguments_to_call_algorithm(self):
+        pass
 
     def build_pipeline_graph(
         self,
