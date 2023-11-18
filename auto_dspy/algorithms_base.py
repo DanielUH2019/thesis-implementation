@@ -2,6 +2,8 @@ import abc
 from typing import Any, Optional, Tuple
 from dspy.signatures.field import InputField
 from dspy.signatures.signature import Signature
+from dspy.teleprompt import Teleprompter
+import dspy
 from autogoal_core.kb._algorithm import (
     Algorithm,
     PipelineNode,
@@ -93,7 +95,6 @@ class Pipeline:
     """Represents a sequence of algorithms.
 
     Each algorithm must have a `run` method declaring it's input and output type.
-    The pipeline instance also receives the input and output types.
     """
 
     def __init__(
@@ -103,71 +104,104 @@ class Pipeline:
         path_to_llm: str,
     ) -> None:
         self.algorithms = algorithms
-        self.input_types = input_types
         self.path_to_llm = path_to_llm
 
-    def _extract_arguments_to_call_initial_algorithm(
-        self, input_instruction: str, algorithm: DspyAlgorithmBase
-    ) -> dict[str, Any]:
-        """Extract arguments related to an AlgorithmSignature from an instruction in natural language using an llm"""
+    def _get_init(self):
+        """Obtains the definition for the __init__ method of the dspy module that is been building"""
 
-        llm = Llama(self.path_to_llm, n_gpu_layers=-1)
-        instruction = f"""
-        Given the instruction: {input_instruction}
-        And the schema: {algorithm.get_signature().kwargs}
-        Extract information from the instruction that match the schema
-        """
+        def init(
+            self,
+            algorithms: list[DspyAlgorithmBase],
+            path_to_llm: str,
+        ):
+            self.algorithms = algorithms
+            self.path_to_llm = path_to_llm
 
-        pydantic_model, grammar_text = self._generate_grammar_from_signature(
-            algorithm.get_signature()
-        )
-        grammar = LlamaGrammar.from_string(grammar_text)
+        return init
 
-        response = llm(instruction, grammar=grammar)
-        json_response = response["choices"][0]["text"]
+    def _get__extract_arguments_to_call_initial_algorithm(self):
+        def _extract_arguments_to_call_initial_algorithm(
+            self, input_instruction: str, algorithm: DspyAlgorithmBase
+        ) -> dict[str, Any]:
+            """Extract arguments related to an AlgorithmSignature from an instruction in natural language using an llm"""
 
-        model = pydantic_model.model_validate_json(json_response)
-        return model.model_dump()
+            llm = Llama(self.path_to_llm, n_gpu_layers=-1)
+            instruction = f"""
+            Given the instruction: {input_instruction}
+            And the schema: {algorithm.get_signature().kwargs}
+            Extract information from the instruction that match the schema
+            """
 
-    def _generate_grammar_from_signature(
-        self, signature: AlgorithmSignature
-    ) -> tuple[type[BaseModel], str]:
-        fields = {k: (v.annotation, ...) for k, v in signature.kwargs}
-        DynamicSignatureModel = create_model("DynamicSignatureModel", **fields)
-        return DynamicSignatureModel, SchemaConverter.from_pydantic_model(
-            DynamicSignatureModel, None
-        )
-
-    def run(self, input_instruction: str):
-        memory: dict[str, Any] = {}
-
-        memory["instruction"] = input_instruction
-        algorithms_calls: list[tuple[DspyAlgorithmBase, dict[str, Any]]] = []
-
-        final_output: Optional[Any] = None
-
-        for i, algorithm in enumerate(self.algorithms):
-            if i == 0:
-                args = self._extract_arguments_to_call_initial_algorithm(
-                    input_instruction, algorithm
-                )
-            else:
-                args = build_input_args(algorithm, memory)
-            output = algorithm.run(**args)
-            for k, v in output:
-                memory[k] = v
-
-            inputs_to_maintain = set(
-                algorithm.get_signature().inputs_fields_to_maintain()
+            pydantic_model, grammar_text = self._generate_grammar_from_signature(
+                algorithm.get_signature()
             )
-            inputs_to_delete = set(algorithm.input_args()) - inputs_to_maintain
-            for key in inputs_to_delete:
-                del memory[key]
+            grammar = LlamaGrammar.from_string(grammar_text)
 
-            if i == len(self.algorithms) - 1:
-                final_output = output
+            response = llm(instruction, grammar=grammar)
+            json_response = response["choices"][0]["text"]
 
-        return final_output
+            model = pydantic_model.model_validate_json(json_response)
+            return model.model_dump()
+
+        return _extract_arguments_to_call_initial_algorithm
+
+    def _get_generate_grammar_from_signature(self):
+        def _generate_grammar_from_signature(
+            self, signature: AlgorithmSignature
+        ) -> tuple[type[BaseModel], str]:
+            fields = {k: (v.annotation, ...) for k, v in signature.kwargs}
+            DynamicSignatureModel = create_model("DynamicSignatureModel", **fields)
+            return DynamicSignatureModel, SchemaConverter.from_pydantic_model(
+                DynamicSignatureModel, None
+            )
+
+        return _generate_grammar_from_signature
+
+    def _get_forward(self):
+        """Obtains the definition for the forward method of the dspy module that is been building"""
+
+        def forward(self, input_instruction: str):
+            memory: dict[str, Any] = {}
+            memory["instruction"] = input_instruction
+            final_output: Optional[Any] = None
+            for i, algorithm in enumerate(self.algorithms):
+                if i == 0:
+                    args = self._extract_arguments_to_call_initial_algorithm(
+                        input_instruction, algorithm
+                    )
+                else:
+                    args = build_input_args(algorithm, memory)
+                output = algorithm.run(**args)
+                for k, v in output:
+                    memory[k] = v
+                inputs_to_maintain = set(
+                    algorithm.get_signature().inputs_fields_to_maintain()
+                )
+                inputs_to_delete = set(algorithm.input_args()) - inputs_to_maintain
+                for key in inputs_to_delete:
+                    del memory[key]
+                if i == len(self.algorithms) - 1:
+                    final_output = output
+            return final_output
+
+        return forward
+
+    def run(self, trainset):
+        teleprompter = self.algorithms.pop()
+        assert isinstance(teleprompter, Teleprompter)
+        dspy_module = type(
+            "GeneratedDspyModule",
+            (dspy.Module,),
+            {
+                "__init__": self._get_init(),
+                "_generate_grammar_from_signature": self._get_generate_grammar_from_signature(),
+                "_extract_arguments_to_call_initial_algorithm": self._get__extract_arguments_to_call_initial_algorithm(),
+                "forward": self._get_forward(),
+            },
+        )
+
+        compiled_program = teleprompter.compile(dspy_module(), trainset=trainset)
+        return compiled_program
 
 
 class PipelineSpaceBuilder:
@@ -273,7 +307,7 @@ class PipelineSpaceBuilder:
 
         # This is the last step of the pipeline, after sampling this node we can stop
         # every node in the graph will have an edge to this node and this node will have an edge to the end node
-        # TODO: 
+        # TODO:
         # teleprompter_node
 
         while initial_valid_nodes:
