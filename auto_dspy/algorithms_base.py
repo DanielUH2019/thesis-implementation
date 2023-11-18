@@ -142,6 +142,8 @@ class Pipeline:
         memory: dict[str, Any] = {}
 
         memory["instruction"] = input_instruction
+        algorithms_calls: list[tuple[DspyAlgorithmBase, dict[str, Any]]] = []
+
         final_output: Optional[Any] = None
 
         for i, algorithm in enumerate(self.algorithms):
@@ -173,9 +175,12 @@ class PipelineSpaceBuilder:
         self.model = guidance.models.LlamaCpp(path_to_llm)
 
     def find_initial_valid_nodes(
-        self, input_instruction: str, algorithms_pool: set[DspyAlgorithmBase]
+        self, dataset_description: str, algorithms_pool: set[DspyAlgorithmBase]
     ) -> list[PipelineNode]:
-        """Find the nodes of the graph that are valid to stablish an edge from the start node representing the input instruction using an llm that infers what signatures are compatible to the start node."""
+        """Find the nodes of the graph that are valid to stablish an edge from
+        the start node(representing a high level description of the dataset that is going to be used),
+        using an llm that infers what signatures are compatible to the start node.
+        """
 
         initial_valid_nodes = []
         context = """\
@@ -193,8 +198,8 @@ class PipelineSpaceBuilder:
         for a in algorithms_pool:
             current_signature = a.get_signature()
             instruction = f"""\
-                Given the instruction: {input_instruction}\
-                can the following signature be used: {current_signature}
+                Given the dataset_description: {dataset_description}\
+                can the following signature be used directly?: {repr(current_signature)}
             """
             lm = (
                 context
@@ -221,7 +226,7 @@ class PipelineSpaceBuilder:
 
     def build_pipeline_graph(
         self,
-        input_instruction: str,
+        dataset_description: str,
         output_type: type,
         registry: list[DspyAlgorithmBase],
         max_list_depth: int = 3,
@@ -254,7 +259,7 @@ class PipelineSpaceBuilder:
         # We start by collecting all the possible input nodes,
         # those that can process a subset of the input_types
         initial_valid_nodes: list[PipelineNode] = self.find_initial_valid_nodes(
-            input_instruction, pool
+            dataset_description, pool
         )
 
         G = Graph()
@@ -265,6 +270,11 @@ class PipelineSpaceBuilder:
         # We'll make a BFS exploration of the pipeline space.
         # For every open node we will add to the graph every node to which it can connect.
         closed_nodes = set()
+
+        # This is the last step of the pipeline, after sampling this node we can stop
+        # every node in the graph will have an edge to this node and this node will have an edge to the end node
+        # TODO: 
+        # teleprompter_node
 
         while initial_valid_nodes:
             node = initial_valid_nodes.pop(0)
