@@ -154,4 +154,8 @@ class SchemaConverter:
     def format_grammar(self):
         return "\n".join((f"{name} ::= {rule}" for name, rule in self._rules.items()))
 
-    
+    @classmethod
+    def from_pydantic_model(cls, model: type[BaseModel], prop_order: Optional[dict[str, int]]):
+        if prop_order is None:
+            prop_order = {}
+        return cls(prop_order).visit(model.model_json_schema(), None)
