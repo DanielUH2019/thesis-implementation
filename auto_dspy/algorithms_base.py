@@ -1,6 +1,6 @@
 import abc
-from typing import Any, Optional, Self, Tuple
-from dspy.signatures.field import InputField
+from typing import Any, Optional, Tuple
+from dspy.signatures.field import InputField, OutputField
 from dspy.signatures.signature import Signature
 from dspy.teleprompt import Teleprompter
 import dspy
@@ -20,7 +20,8 @@ from llama_cpp import Llama, LlamaGrammar
 
 
 class AlgorithmSignature(Signature):
-    def inputs_fields_to_maintain(self) -> dict[str, InputField]:
+    @classmethod
+    def inputs_fields_to_maintain(cls) -> dict[str, InputField]:
         return {}
 
 
@@ -39,24 +40,32 @@ class DspyAlgorithmBase(Algorithm):
     @classmethod
     def input_types(cls) -> Tuple[type, ...]:
         """Returns an ordered list of the expected semantic input types of the `run` method."""
+        signature = cls.get_signature()
         return tuple(
-            [v.annotation for v in cls.get_signature().input_fields().values()]
+            [
+                signature.kwargs[key].annotation
+                for key in signature.kwargs
+                if isinstance(signature.kwargs[key], InputField)
+            ]
         )
 
     @classmethod
     def input_args(cls) -> Tuple[str, ...]:
         """Returns an ordered tuple of the names of the arguments in the `run` method."""
-        return tuple(cls.get_signature().input_fields().keys())
+        names = [name for name in cls.get_signature().kwargs]
+        return tuple(names)
 
     @classmethod
     def output_type(cls) -> Tuple[type, ...]:
         """Returns an ordered list of the expected semantic output type of the `run` method."""
+        signature = cls.get_signature()
         return tuple(
-            [v.annotation for v in cls.get_signature().output_fields().values()]
-            + [
-                v.annotation
-                for v in cls.get_signature().inputs_fieldds_to_output().values()
+            [
+                signature.kwargs[key].annotation
+                for key in signature.kwargs
+                if isinstance(signature.kwargs[key], OutputField)
             ]
+            + [v.annotation for v in signature.inputs_fields_to_maintain().values()]
         )
 
     @abc.abstractmethod
@@ -69,8 +78,13 @@ class DspyAlgorithmBase(Algorithm):
         if cls.is_teleprompter() or other.is_teleprompter():
             return True
 
-        outputs = cls.get_signature().output_fields()
-        inputs = other.get_signature().input_fields()
+        outputs = {
+            k: v for k, v in cls.get_signature().kwargs if isinstance(v, OutputField)
+        }
+        inputs = {
+            k: v for k, v in other.get_signature().kwargs if isinstance(v, InputField)
+        }
+
         if len(outputs) != len(inputs):
             return False
 
@@ -156,7 +170,11 @@ class Pipeline:
         def _generate_grammar_from_signature(
             self, signature: AlgorithmSignature
         ) -> tuple[type[BaseModel], str]:
-            fields = {k: (v.annotation, ...) for k, v in signature.kwargs}
+            fields = {
+                k: (v.annotation, ...)
+                for k, v in signature.kwargs
+                if isinstance(v, InputField) or isinstance(v, OutputField)
+            }
             DynamicSignatureModel = create_model("DynamicSignatureModel", **fields)
             return DynamicSignatureModel, SchemaConverter.from_pydantic_model(
                 DynamicSignatureModel, None
@@ -212,16 +230,19 @@ class Pipeline:
 
 
 class PipelineSpaceBuilder:
-    def __init__(self, path_to_llm) -> None:
-        self.model = guidance.models.LlamaCpp(path_to_llm)
+    def __init__(self, path_to_llm: str) -> None:
+        self.path_to_llm = path_to_llm
 
     def find_initial_valid_nodes(
-        self, dataset_description: str, algorithms_pool: set[DspyAlgorithmBase]
+        self,
+        dataset_description: str,
+        algorithms_pool: set[DspyAlgorithmBase],
     ) -> list[PipelineNode]:
         """Find the nodes of the graph that are valid to stablish an edge from
         the start node(representing a high level description of the dataset that is going to be used),
         using an llm that infers what signatures are compatible to the start node.
         """
+        model = guidance.models.LlamaCpp(self.path_to_llm)
 
         initial_valid_nodes = []
         context = """\
@@ -243,7 +264,8 @@ class PipelineSpaceBuilder:
                 can the following signature be used directly?: {repr(current_signature)}
             """
             lm = (
-                context
+                model
+                + context
                 + instruction
                 + f"Answer: {guidance.select(['yes', 'no'], name='answer')}"
             )
@@ -254,8 +276,8 @@ class PipelineSpaceBuilder:
             initial_valid_nodes.append(
                 PipelineNode(
                     algorithm=a,
-                    input_types=a.get_signature().input_fields(),
-                    output_types=a.get_signature().output_fields(),
+                    input_types=a.input_types(),
+                    output_types=a.output_type(),
                     registry=algorithms_pool,
                 )
             )
@@ -296,7 +318,9 @@ class PipelineSpaceBuilder:
         pool.remove(teleprompter)
         # This is the last step of the pipeline, after sampling this node we can stop.
         # Every node in the graph will have an edge to this node and this node will have an edge to the end node
-        teleprompter_node = PipelineNode(teleprompter, input_types=None, output_types=None, registry=registry)
+        teleprompter_node = PipelineNode(
+            teleprompter, input_types=None, output_types=None, registry=registry
+        )
 
         for algorithm in registry:
             for _ in range(max_list_depth):
@@ -319,10 +343,6 @@ class PipelineSpaceBuilder:
         # We'll make a BFS exploration of the pipeline space.
         # For every open node we will add to the graph every node to which it can connect.
         closed_nodes = set()
-
-        
-        # TODO:
-        # teleprompter_node
 
         while initial_valid_nodes:
             node = initial_valid_nodes.pop(0)
@@ -382,7 +402,6 @@ class PipelineSpaceBuilder:
 
             closed_nodes.add(node)
 
-        
         G.add_edge(teleprompter_node, GraphSpace.End)
 
         # Remove all nodes that are not connected to the end node
@@ -395,4 +414,4 @@ class PipelineSpaceBuilder:
         except KeyError:
             raise TypeError("No pipelines can be found!")
 
-        return PipelineSpace(G, input_types=input_types)
+        return PipelineSpace(G, input_types=dataset_description)
