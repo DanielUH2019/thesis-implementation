@@ -1,5 +1,5 @@
 import abc
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Self, Tuple
 from dspy.signatures.field import InputField
 from dspy.signatures.signature import Signature
 from dspy.teleprompt import Teleprompter
@@ -26,6 +26,10 @@ class AlgorithmSignature(Signature):
 
 class DspyAlgorithmBase(Algorithm):
     """Represents an abstract dspy algorithm with a run method."""
+
+    @classmethod
+    def is_teleprompter(cls) -> bool:
+        return False
 
     @classmethod
     @abc.abstractmethod
@@ -56,14 +60,17 @@ class DspyAlgorithmBase(Algorithm):
         )
 
     @abc.abstractmethod
-    def run(self, **kwargs) -> dict[str, Any]:
+    def run(self, *args, **kwargs) -> dict[str, Any]:
         """Executes the algorithm."""
         pass
 
     @classmethod
-    def is_compatible_with(cls, other_signature: Signature) -> bool:
+    def is_compatible_with(cls, other: type["DspyAlgorithmBase"]) -> bool:
+        if cls.is_teleprompter() or other.is_teleprompter():
+            return True
+
         outputs = cls.get_signature().output_fields()
-        inputs = other_signature.input_fields()
+        inputs = other.get_signature().input_fields()
         if len(outputs) != len(inputs):
             return False
 
@@ -188,7 +195,7 @@ class Pipeline:
 
     def run(self, trainset):
         teleprompter = self.algorithms.pop()
-        assert isinstance(teleprompter, Teleprompter)
+        assert teleprompter.is_teleprompter()
         dspy_module = type(
             "GeneratedDspyModule",
             (dspy.Module,),
@@ -200,7 +207,7 @@ class Pipeline:
             },
         )
 
-        compiled_program = teleprompter.compile(dspy_module(), trainset=trainset)
+        compiled_program = teleprompter.run(dspy_module(), trainset=trainset)
         return compiled_program
 
 
@@ -283,6 +290,14 @@ class PipelineSpaceBuilder:
 
         pool = set(registry)
 
+        teleprompters_in_registry = [x for x in pool if x.is_teleprompter()]
+        assert len(teleprompters_in_registry) == 1
+        teleprompter = teleprompters_in_registry.pop()
+        pool.remove(teleprompter)
+        # This is the last step of the pipeline, after sampling this node we can stop.
+        # Every node in the graph will have an edge to this node and this node will have an edge to the end node
+        teleprompter_node = PipelineNode(teleprompter, input_types=None, output_types=None, registry=registry)
+
         for algorithm in registry:
             for _ in range(max_list_depth):
                 algorithm = make_seq_algorithm(algorithm)
@@ -305,14 +320,13 @@ class PipelineSpaceBuilder:
         # For every open node we will add to the graph every node to which it can connect.
         closed_nodes = set()
 
-        # This is the last step of the pipeline, after sampling this node we can stop
-        # every node in the graph will have an edge to this node and this node will have an edge to the end node
+        
         # TODO:
         # teleprompter_node
 
         while initial_valid_nodes:
             node = initial_valid_nodes.pop(0)
-
+            G.add_edge(node, teleprompter_node)
             # These are the types that are available at this node
             guaranteed_types = node.output_types
 
@@ -367,6 +381,9 @@ class PipelineSpaceBuilder:
                 G.add_edge(node, GraphSpace.End)
 
             closed_nodes.add(node)
+
+        
+        G.add_edge(teleprompter_node, GraphSpace.End)
 
         # Remove all nodes that are not connected to the end node
         try:
