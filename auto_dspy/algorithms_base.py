@@ -7,7 +7,6 @@ import dspy
 from autogoal_core.kb._algorithm import (
     Algorithm,
     PipelineNode,
-    PipelineSpace,
     make_seq_algorithm,
 )
 import networkx as nx
@@ -111,8 +110,29 @@ def build_input_args(
     return result
 
 
+class DspyPipelineSpace(GraphSpace):
+    def __init__(self, graph: Graph, path_to_llm: str):
+        super().__init__(graph, initializer=self._initialize)
+        self.path_to_llm = path_to_llm
+
+    def _initialize(self, item: PipelineNode, sampler):
+        return item.sample(sampler)
+
+    def nodes(self) -> set[type[Algorithm]]:
+        """Returns a list of all algorithms (types) that exist in the graph."""
+        return set(
+            node.algorithm
+            for node in self.graph.nodes
+            if isinstance(node, PipelineNode)
+        )
+
+    def sample(self, *args, **kwargs):
+        path = super().sample(*args, **kwargs)
+        return DspyPipeline(path, path_to_llm=self.path_to_llm)
+
+
 @nice_repr
-class Pipeline:
+class DspyPipeline:
     """Represents a sequence of algorithms.
 
     Each algorithm must have a `run` method declaring it's input and output type.
@@ -121,7 +141,6 @@ class Pipeline:
     def __init__(
         self,
         algorithms: list[DspyAlgorithmBase],
-        input_types: list[AlgorithmSignature],
         path_to_llm: str,
     ) -> None:
         self.algorithms = algorithms
@@ -293,7 +312,7 @@ class PipelineSpaceBuilder:
         output_type: type,
         registry: list[DspyAlgorithmBase],
         max_list_depth: int = 3,
-    ) -> PipelineSpace:
+    ) -> DspyPipelineSpace:
         """Build a graph of algorithms.
 
         Every node in the graph corresponds to a <autogoal.grammar.ContextFreeGrammar> that
@@ -414,4 +433,4 @@ class PipelineSpaceBuilder:
         except KeyError:
             raise TypeError("No pipelines can be found!")
 
-        return PipelineSpace(G, input_types=dataset_description)
+        return DspyPipelineSpace(G, path_to_llm=self.path_to_llm)
