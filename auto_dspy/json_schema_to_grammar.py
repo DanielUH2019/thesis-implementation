@@ -42,8 +42,10 @@
 # SOFTWARE.
 
 
+import argparse
 import json
 import re
+import sys
 from typing import Optional
 
 from pydantic import BaseModel
@@ -154,8 +156,34 @@ class SchemaConverter:
     def format_grammar(self):
         return "\n".join((f"{name} ::= {rule}" for name, rule in self._rules.items()))
 
-    @classmethod
-    def from_pydantic_model(cls, model: type[BaseModel], prop_order: Optional[dict[str, int]]):
-        if prop_order is None:
-            prop_order = {}
-        return cls(prop_order).visit(model.model_json_schema(), None)
+
+def main(args_in = None):
+    parser = argparse.ArgumentParser(
+        description='''
+            Generates a grammar (suitable for use in ./main) that produces JSON conforming to a
+            given JSON schema. Only a subset of JSON schema features are supported; more may be
+            added in the future.
+        ''',
+    )
+    parser.add_argument(
+        '--prop-order',
+        default=[],
+        type=lambda s: s.split(','),
+        help='''
+            comma-separated property names defining the order of precedence for object properties;
+            properties not specified here are given lower precedence than those that are, and are
+            sorted alphabetically
+        '''
+    )
+    parser.add_argument('schema', help='file containing JSON schema ("-" for stdin)')
+    args = parser.parse_args(args_in)
+
+    schema = json.load(sys.stdin if args.schema == '-' else open(args.schema))
+    prop_order = {name: idx for idx, name in enumerate(args.prop_order)}
+    converter = SchemaConverter(prop_order)
+    converter.visit(schema, '')
+    print(converter.format_grammar())
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,8 @@
+
+space ::= " "?
+integer ::= ("-"? ([0-9] | [1-9] [0-9]*)) space
+string ::=  "\"" (
+        [^"\\] |
+        "\\" (["\\/bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F])
+      )* "\"" space 
+root ::= "{" space "\"age\"" space ":" space integer "," space "\"firstName\"" space ":" space string "," space "\"lastName\"" space ":" space string "}" space
