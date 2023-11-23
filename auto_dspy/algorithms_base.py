@@ -195,9 +195,10 @@ class DspyPipeline:
                 if isinstance(v, InputField) or isinstance(v, OutputField)
             }
             DynamicSignatureModel = create_model("DynamicSignatureModel", **fields)
-            return DynamicSignatureModel, SchemaConverter.from_pydantic_model(
-                DynamicSignatureModel, None
-            )
+            converter = SchemaConverter({})
+            converter.visit(DynamicSignatureModel.model_json_schema(), '')
+            grammar_text = converter.format_grammar()
+            return DynamicSignatureModel, grammar_text
 
         return _generate_grammar_from_signature
 
