@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from pydantic_settings import BaseSettings
+import requests
 from transformers import pipeline
 import timm
 import torch
@@ -21,10 +22,6 @@ class TimmBackendConfig(BackendConfig):
 class ModelBackend(ABC):
     @abstractmethod
     def __load_model(self, config: BackendConfig):
-        pass
-
-    @abstractmethod
-    def __initialize_model(self):
         pass
 
     @abstractmethod
@@ -63,4 +60,7 @@ class TimmBackend(ModelBackend):
         output = self.model(image_tensor.unsqueeze(0))
         probabilities = torch.nn.functional.softmax(output[0], dim=0)
         values, indices = torch.topk(probabilities, 1)
-        return values, indices
+        IMAGENET_1k_URL = 'https://storage.googleapis.com/bit_models/ilsvrc2012_wordnet_lemmas.txt'
+        IMAGENET_1k_LABELS = requests.get(IMAGENET_1k_URL).text.strip().split('\n')
+        sorted_labels = [{'label': IMAGENET_1k_LABELS[idx], 'value': val.item()} for val, idx in zip(values, indices)]
+        return sorted_labels[0]['label']
