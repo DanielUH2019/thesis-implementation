@@ -16,6 +16,7 @@ import guidance
 from pydantic import BaseModel, ValidationError, create_model
 from json_schema_to_grammar import SchemaConverter
 from llama_cpp import Llama, LlamaGrammar
+from memory import Memory, MemoryDataModel, ValueStoreObjectModel
 
 
 class AlgorithmSignature(Signature):
@@ -96,18 +97,6 @@ class DspyAlgorithmBase(Algorithm):
                     return False
 
         return True
-
-
-def build_input_args(
-    algorithm: DspyAlgorithmBase, values: dict[str, Any]
-) -> dict[str, Any]:
-    """Buils the correct input mapping for `algorithm` using the provided `values` mapping types to objects."""
-    inputs = {
-        k: v for k, v in algorithm.get_signature().kwargs if isinstance(v, InputField)
-    }
-    result = {k: v for k, v in values if k in inputs}
-    assert len(inputs) == result  # Cannot find compatible input value
-    return result
 
 
 class DspyPipelineSpace(GraphSpace):
@@ -196,7 +185,7 @@ class DspyPipeline:
             }
             DynamicSignatureModel = create_model("DynamicSignatureModel", **fields)
             converter = SchemaConverter({})
-            converter.visit(DynamicSignatureModel.model_json_schema(), '')
+            converter.visit(DynamicSignatureModel.model_json_schema(), "")
             grammar_text = converter.format_grammar()
             return DynamicSignatureModel, grammar_text
 
@@ -206,8 +195,17 @@ class DspyPipeline:
         """Obtains the definition for the forward method of the dspy module that is been building"""
 
         def forward(self, input_instruction: str):
-            memory: dict[str, Any] = {}
-            memory["instruction"] = input_instruction
+            memory = Memory()
+
+            memory.insert_to_value_store(
+                [
+                    ValueStoreObjectModel(
+                        key_name="instruction",
+                        description="input_instruction",
+                        value=input_instruction,
+                    )
+                ]
+            )
             final_output: Optional[Any] = None
             for i, algorithm in enumerate(self.algorithms):
                 if i == 0:
@@ -215,21 +213,57 @@ class DspyPipeline:
                         input_instruction, algorithm
                     )
                 else:
-                    args = build_input_args(algorithm, memory)
+                    args = self.build_input_args(algorithm, memory)
                 output = algorithm.run(**args)
-                for k, v in output:
-                    memory[k] = v
                 inputs_to_maintain = set(
                     algorithm.get_signature().inputs_fields_to_maintain()
                 )
+
                 inputs_to_delete = set(algorithm.input_args()) - inputs_to_maintain
                 for key in inputs_to_delete:
-                    del memory[key]
+                    memory.delete_from_store(key)
+
+                for k, v, desc in output:
+                    memory.insert_to_value_store(
+                        [ValueStoreObjectModel(key_name=k, value=v, description=desc)]
+                    )
+
                 if i == len(self.algorithms) - 1:
                     final_output = output
             return final_output
 
         return forward
+
+    def build_input_args(
+        self, algorithm: DspyAlgorithmBase, memory: Memory
+    ) -> dict[str, Any]:
+        """Buils the correct input mapping for `algorithm` using the provided `values` mapping types to objects."""
+        required_input_keys = set(
+            [
+                k
+                for k, v in algorithm.get_signature().kwargs
+                if isinstance(v, InputField)
+            ]
+        )
+
+        avaliable_keys = set(
+            [key for key in memory.value_store if key in required_input_keys]
+        )
+        unmatched_keys = required_input_keys - avaliable_keys
+        result = {k: memory.value_store[k] for k in avaliable_keys}
+        if len(unmatched_keys) > 0:
+            most_similar_keys = [
+                memory.retrieve_stored_value(k, v.desc)
+                for k, v in algorithm.get_signature().kwargs
+                if k in unmatched_keys
+            ]
+            result.update(most_similar_keys)
+
+        if len(result) != len(required_input_keys):
+            raise ValueError(
+                f"Could not find enough arguments to call {algorithm.get_signature()}"
+            )
+        return result
 
     def run(self, trainset):
         teleprompter = self.algorithms.pop()
