@@ -1,6 +1,17 @@
+
 from .algorithms_base import AlgorithmSignature
 from dspy.signatures import InputField, OutputField
 
+
+class GenerateQuestion(AlgorithmSignature):
+    """Generate a question from an instruction that can be used to better understand the instruction."""
+    
+    instruction = InputField(desc="the instruction to be understood")
+    question = OutputField(desc="the question that can be asked to better understand the instruction")
+
+    @classmethod
+    def inputs_fields_to_output(cls) -> dict[str, InputField]:
+        return {"instruction": InputField(desc="the instruction to be understood")}
 
 class GenerateSearchQuery(AlgorithmSignature):
     """Write a simple search query that will help answer a complex question."""
@@ -78,3 +89,10 @@ class ZeroShotImageClassification(AlgorithmSignature):
 
     image = InputField()
     label = OutputField()
+
+
+class CodeGenerator(AlgorithmSignature):
+    """Generate code to respond to an instruction"""
+
+    context = InputField()
+    instruction = InputField()

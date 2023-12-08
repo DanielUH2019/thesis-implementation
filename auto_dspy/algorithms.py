@@ -1,6 +1,8 @@
 from typing import Optional
 from dspy.signatures.signature import Signature
 from dspy.predict import ReAct, ChainOfThought, ProgramOfThought
+
+from auto_dspy.tools_signatures import RunSearchQuery
 from .algorithms_base import AlgorithmSignature, DspyAlgorithmBase
 from autogoal_core.grammar import (
     CategoricalValue,
@@ -45,6 +47,10 @@ from .model_backends import (
     TransformersBackendConfig,
     TimmBackendConfig,
 )
+
+from metaphor_python import Metaphor
+import os
+import interpreter
 
 
 def run_algorithm_with_transformers_or_timm(
@@ -95,7 +101,7 @@ class BasicQAAlgorithm(DspyAlgorithmBase):
 class GenerateSearchQueryAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
-        prompt_technique: CategoricalValue(ReAct, ChainOfThought, ProgramOfThought),
+        prompt_technique: CategoricalValue(ReAct, ChainOfThought),
     ):
         self.prompt_technique = prompt_technique
 
@@ -104,13 +110,21 @@ class GenerateSearchQueryAlgorithm(DspyAlgorithmBase):
         return GenerateSearchQuery
 
     def run(self, context, question):
-        return self.prompt_technique(context, question)
+        search_query = self.prompt_technique(context, question)
+        METAPHOR_API_KEY = os.getenv("METAPHOR_API_KEY")
+        assert (
+            METAPHOR_API_KEY is not None
+        ), "You need to put a METAPHOR_API_KEY in a .env to be able to run search queries"
+        metaphor = Metaphor(METAPHOR_API_KEY)
+        search_response = metaphor.search(search_query, use_autoprompt=True)
+        contents_result = search_response.get_contents()
+        return [c.extract for c in contents_result.contents]
 
 
 class ImageCaptioningAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
-        prompt_technique: CategoricalValue(ReAct, ChainOfThought, ProgramOfThought),
+        prompt_technique: CategoricalValue(ReAct, ChainOfThought),
     ):
         self.prompt_technique = prompt_technique
 
@@ -146,7 +160,7 @@ class ImageClassificationAlgorithm(DspyAlgorithmBase):
         return ImageClassification
 
     def run(self, image):
-        run_algorithm_with_transformers_or_timm(
+        return run_algorithm_with_transformers_or_timm(
             self.model_name, IMAGE_CLASSIFICATION, image
         )
 
@@ -165,7 +179,9 @@ class LanguageTranslationAlgorithm(DspyAlgorithmBase):
         return LanguageTranslation
 
     def run(self, text):
-        run_algorithm_with_transformers_or_timm(self.model_name, TRANSLATION, text)
+        return run_algorithm_with_transformers_or_timm(
+            self.model_name, TRANSLATION, text
+        )
 
 
 class SummarizeTextAlgorithm(DspyAlgorithmBase):
@@ -184,7 +200,9 @@ class SummarizeTextAlgorithm(DspyAlgorithmBase):
         return SummarizeText
 
     def run(self, text):
-        run_algorithm_with_transformers_or_timm(self.model_name, SUMMARIZATION, text)
+        return run_algorithm_with_transformers_or_timm(
+            self.model_name, SUMMARIZATION, text
+        )
 
 
 class TextClassificationAlgorithm(DspyAlgorithmBase):
@@ -204,9 +222,10 @@ class TextClassificationAlgorithm(DspyAlgorithmBase):
         return TextClassification
 
     def run(self, text):
-        run_algorithm_with_transformers_or_timm(
+        return run_algorithm_with_transformers_or_timm(
             self.model_name, TEXT_CLASSIFICATION, text
         )
+
 
 class ZeroShotTextClassificationAlgorithm(DspyAlgorithmBase):
     def __init__(
@@ -216,7 +235,7 @@ class ZeroShotTextClassificationAlgorithm(DspyAlgorithmBase):
             "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli",
             "MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli",
             "facebook/bart-large-mnli",
-            "joeddav/xlm-roberta-large-xnli"
+            "joeddav/xlm-roberta-large-xnli",
         ),
     ):
         self.model_name = models
@@ -226,9 +245,10 @@ class ZeroShotTextClassificationAlgorithm(DspyAlgorithmBase):
         return ZeroShotTextClassification
 
     def run(self, text):
-        run_algorithm_with_transformers_or_timm(
+        return run_algorithm_with_transformers_or_timm(
             self.model_name, ZERO_SHOT_CLASSIFICATION, text
         )
+
 
 class ZeroShotImageClassificationAlgorithm(DspyAlgorithmBase):
     def __init__(
@@ -244,7 +264,25 @@ class ZeroShotImageClassificationAlgorithm(DspyAlgorithmBase):
         return ZeroShotImageClassification
 
     def run(self, image):
-        run_algorithm_with_transformers_or_timm(
+        return run_algorithm_with_transformers_or_timm(
             self.model_name, ZERO_SHOT_IMAGE_CLASSIFICATION, image
         )
 
+
+class CodeGeneratorAlgorithm(DspyAlgorithmBase):
+    def __init__(
+        self,
+        prompt_technique: CategoricalValue(ReAct, ChainOfThought, ProgramOfThought),
+    ) -> None:
+        self.prompt_technique = prompt_technique
+
+    def run(self, context, instruction):
+        code = self.prompt_technique(context=context, instruction=instruction)
+        if not isinstance(self.prompt_technique, ProgramOfThought):
+            interpreter.local = True
+            interpreter.temperature = 0
+            interpreter.model = "openhermes2.5-mistral"
+            interpreter.conversation_history = False
+            messages = interpreter.chat(f"Run this code and give me the result: {code}")
+            return messages[0]["output"]
+        return code
