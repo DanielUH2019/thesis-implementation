@@ -38,8 +38,8 @@ from .hf_tasks import (
     TABLE_QUESTION_ANSWERING,
     ZERO_SHOT_IMAGE_CLASSIFICATION,
 )
-from .constants import TIMM_MODELS_SUPPORTED, TRANSFORMERS_MODELS_SUPPORTED
-
+from .constants import TIMM_MODELS_SUPPORTED, TRANSFORMERS_MODELS_SUPPORTED, REACT_MODULE, COT_MODULE, POT_MODULE
+from .utils import instantiate_prompt_module
 
 from .model_backends import (
     TimmBackend,
@@ -71,7 +71,7 @@ def run_algorithm_with_transformers_or_timm(
 class GenerateAnswerAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
-        prompt_technique: CategoricalValue(ReAct, ChainOfThought, ProgramOfThought),
+        prompt_technique: CategoricalValue(REACT_MODULE, COT_MODULE, POT_MODULE),
     ):
         self.prompt_technique = prompt_technique
 
@@ -80,13 +80,15 @@ class GenerateAnswerAlgorithm(DspyAlgorithmBase):
         return GenerateAnswer
 
     def run(self, context, question):
-        return self.prompt_technique(context, question)
+        prompt_module = instantiate_prompt_module(self.prompt_technique, self.get_signature())
+        kwargs = {"context": context, "question": question}
+        return prompt_module(**kwargs)
 
 
 class BasicQAAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
-        prompt_technique: CategoricalValue(ReAct, ChainOfThought, ProgramOfThought),
+        prompt_technique: CategoricalValue(REACT_MODULE, COT_MODULE, POT_MODULE),
     ):
         self.prompt_technique = prompt_technique
 
@@ -95,13 +97,15 @@ class BasicQAAlgorithm(DspyAlgorithmBase):
         return BasicQA
 
     def run(self, question):
-        return self.prompt_technique(question)
+        prompt_module = instantiate_prompt_module(self.prompt_technique, self.get_signature())
+        kwargs = {"question": question}
+        return prompt_module(**kwargs)
 
 
 class GenerateSearchQueryAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
-        prompt_technique: CategoricalValue(ReAct, ChainOfThought),
+        prompt_technique: CategoricalValue(REACT_MODULE, COT_MODULE),
     ):
         self.prompt_technique = prompt_technique
 
@@ -110,7 +114,9 @@ class GenerateSearchQueryAlgorithm(DspyAlgorithmBase):
         return GenerateSearchQuery
 
     def run(self, context, question):
-        search_query = self.prompt_technique(context, question)
+        prompt_module = instantiate_prompt_module(self.prompt_technique, self.get_signature())
+        kwargs = {"context": context, "question": question}
+        search_query = prompt_module(**kwargs)
         METAPHOR_API_KEY = os.getenv("METAPHOR_API_KEY")
         assert (
             METAPHOR_API_KEY is not None
@@ -124,7 +130,7 @@ class GenerateSearchQueryAlgorithm(DspyAlgorithmBase):
 class ImageCaptioningAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
-        prompt_technique: CategoricalValue(ReAct, ChainOfThought),
+        prompt_technique: CategoricalValue(REACT_MODULE, COT_MODULE),
     ):
         self.prompt_technique = prompt_technique
 
@@ -133,7 +139,9 @@ class ImageCaptioningAlgorithm(DspyAlgorithmBase):
         return ImageCaptioning
 
     def run(self, image):
-        return self.prompt_technique(image)
+        prompt_module = instantiate_prompt_module(self.prompt_technique, self.get_signature())
+        kwargs = {"image": image}
+        return prompt_module(**kwargs)
 
 
 class ImageClassificationAlgorithm(DspyAlgorithmBase):
@@ -272,12 +280,14 @@ class ZeroShotImageClassificationAlgorithm(DspyAlgorithmBase):
 class CodeGeneratorAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
-        prompt_technique: CategoricalValue(ReAct, ChainOfThought, ProgramOfThought),
+        prompt_technique: CategoricalValue(REACT_MODULE, COT_MODULE, POT_MODULE),
     ) -> None:
         self.prompt_technique = prompt_technique
 
     def run(self, context, instruction):
-        code = self.prompt_technique(context=context, instruction=instruction)
+        prompt_module = instantiate_prompt_module(self.prompt_technique, self.get_signature())
+        kwargs = {"context": context, "instruction": instruction}
+        code = prompt_module(**kwargs)
         if not isinstance(self.prompt_technique, ProgramOfThought):
             interpreter.local = True
             interpreter.temperature = 0
