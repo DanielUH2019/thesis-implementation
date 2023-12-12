@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from auto_dspy.json_schema_to_grammar import SchemaConverter
 
 
-def test_pydantic_model_to_grammar():
+def test_basic_pydantic_model_to_grammar():
     class Owner(BaseModel):
         firstName: str
         lastName: str

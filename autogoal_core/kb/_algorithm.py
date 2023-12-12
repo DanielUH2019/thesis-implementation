@@ -126,7 +126,7 @@ class Algorithm(abc.ABC):
     def input_types(cls) -> Tuple[type]:
         """Returns an ordered list of the expected semantic input types of the `run` method."""
         pass
-    
+
     @abc.abstractmethod
     @classmethod
     def input_args(cls) -> Tuple[str]:
