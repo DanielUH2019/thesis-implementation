@@ -82,3 +82,8 @@ class Memory:
             self.collection_name, points_selector=PointIdsList(points=[id_to_delete])
         )
         del self.value_store[key]
+
+    def delete_from_db(self, id: str|int):
+        self.client.delete(
+            self.collection_name, points_selector=PointIdsList(points=[id])
+        )
