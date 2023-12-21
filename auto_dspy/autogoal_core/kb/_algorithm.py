@@ -121,20 +121,21 @@ class Algorithm(abc.ABC):
     Users should inherit from `AlgorithmBase` instead of this class.
     """
 
-    @abc.abstractmethod
+    
     @classmethod
+    @abc.abstractmethod
     def input_types(cls) -> Tuple[type]:
         """Returns an ordered list of the expected semantic input types of the `run` method."""
         pass
 
-    @abc.abstractmethod
     @classmethod
+    @abc.abstractmethod
     def input_args(cls) -> Tuple[str]:
         """Returns an ordered tuple of the names of the arguments in the `run` method."""
         pass
 
-    @abc.abstractmethod
     @classmethod
+    @abc.abstractmethod
     def output_type(cls) -> type:
         """Returns an ordered list of the expected semantic output type of the `run` method."""
         pass
