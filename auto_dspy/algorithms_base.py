@@ -17,7 +17,7 @@ from pydantic import BaseModel, ValidationError, create_model
 from json_schema_to_grammar import SchemaConverter
 from llama_cpp import Llama, LlamaGrammar
 from memory import Memory, MemoryDataModel, ValueStoreObjectModel
-
+import warnings
 
 class AlgorithmSignature(Signature):
     @classmethod
@@ -149,6 +149,20 @@ class DspyPipeline:
 
         compiled_program = teleprompter.run(dspy_module_generator(), trainset=trainset)
         return compiled_program
+    
+    def send(self, msg: str, *args, **kwargs):
+        found = False
+
+        for step in self.algorithms:
+            if hasattr(step, msg):
+                getattr(step, msg)(*args, **kwargs)
+                found = True
+            elif hasattr(step, "send"):
+                step.send(msg, *args, **kwargs)
+                found = True
+
+        if not found:
+            warnings.warn(f"No step answered message {msg}.")
 
 
 class DspyPipelineNode(PipelineNode):

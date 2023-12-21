@@ -1,5 +1,5 @@
 
-from .algorithms_base import AlgorithmSignature
+from algorithms_base import AlgorithmSignature
 from dspy.signatures import InputField, OutputField
 
 

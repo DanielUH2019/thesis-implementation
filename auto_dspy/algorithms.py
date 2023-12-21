@@ -2,15 +2,14 @@ from typing import Optional
 from dspy.signatures.signature import Signature
 from dspy.predict import ReAct, ChainOfThought, ProgramOfThought
 
-from auto_dspy.tools_signatures import RunSearchQuery
-from .algorithms_base import AlgorithmSignature, DspyAlgorithmBase
+from algorithms_base import AlgorithmSignature, DspyAlgorithmBase
 from autogoal_core.grammar import (
     CategoricalValue,
     ContinuousValue,
     DiscreteValue,
     BooleanValue,
 )
-from .signatures import (
+from signatures import (
     GenerateAnswer,
     BasicQA,
     GenerateSearchQuery,
@@ -23,7 +22,7 @@ from .signatures import (
     ZeroShotImageClassification,
 )
 
-from .hf_tasks import (
+from hf_tasks import (
     Task,
     IMAGE_CLASSIFICATION,
     TRANSLATION,
@@ -38,10 +37,10 @@ from .hf_tasks import (
     TABLE_QUESTION_ANSWERING,
     ZERO_SHOT_IMAGE_CLASSIFICATION,
 )
-from .constants import TIMM_MODELS_SUPPORTED, TRANSFORMERS_MODELS_SUPPORTED, REACT_MODULE, COT_MODULE, POT_MODULE
-from .utils import instantiate_prompt_module
+from constants import TIMM_MODELS_SUPPORTED, TRANSFORMERS_MODELS_SUPPORTED, REACT_MODULE, COT_MODULE, POT_MODULE
+from utils import instantiate_prompt_module
 
-from .model_backends import (
+from model_backends import (
     TimmBackend,
     TransformersBackend,
     TransformersBackendConfig,
