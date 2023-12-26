@@ -1,17 +1,27 @@
-
 from algorithms_base import AlgorithmSignature
 from dspy.signatures import InputField, OutputField
 
 
+class TeleprompterSignature(AlgorithmSignature):
+    """Powerful optimizer that can take any program and learn to bootstrap and select effective prompts for its modules"""
+
+    dspy_module_generator = InputField()
+    trainset = InputField()
+    compiled_program = OutputField()
+
+
 class GenerateQuestion(AlgorithmSignature):
     """Generate a question from an instruction that can be used to better understand the instruction."""
-    
+
     instruction = InputField(desc="the instruction to be understood")
-    question = OutputField(desc="the question that can be asked to better understand the instruction")
+    question = OutputField(
+        desc="the question that can be asked to better understand the instruction"
+    )
 
     @classmethod
     def inputs_fields_to_output(cls) -> dict[str, InputField]:
         return {"instruction": InputField(desc="the instruction to be understood")}
+
 
 class GenerateSearchQuery(AlgorithmSignature):
     """Write a simple search query that will help answer a complex question."""

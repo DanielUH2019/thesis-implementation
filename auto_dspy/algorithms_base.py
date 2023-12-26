@@ -1,5 +1,5 @@
 import abc
-from typing import Any, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple
 from dspy.signatures.field import InputField, OutputField
 from dspy.signatures.signature import Signature
 from dspy.teleprompt import Teleprompter
@@ -70,7 +70,7 @@ class DspyAlgorithmBase(Algorithm):
         ] + [v for v in signature.inputs_fields_to_maintain().values()]
 
     @abc.abstractmethod
-    def run(self, *args, **kwargs) -> dict[str, Any]:
+    def run(self, *args, **kwargs):
         """Executes the algorithm."""
         pass
 
@@ -105,6 +105,7 @@ class DspyAlgorithmBase(Algorithm):
             memory.insert(o.desc)
 
         return True
+
 
 @nice_repr
 class DspyPipelineSpace(GraphSpace):
@@ -143,38 +144,29 @@ class DspyPipeline:
         self.algorithms = algorithms
         self.path_to_llm = path_to_llm
 
-    def run(self, trainset):
+    def run(self, trainset, metric: Callable):
         teleprompter = self.algorithms.pop()
         assert teleprompter.is_teleprompter()
         dspy_module_generator = DspyModuleGenerator(self.algorithms, self.path_to_llm)
 
-        compiled_program = teleprompter.run(dspy_module_generator(), trainset=trainset)
+        compiled_program = teleprompter.run(
+            dspy_module_generator, trainset=trainset, metric=metric
+        )
         return compiled_program
 
-    def send(self, msg: str, *args, **kwargs):
-        found = False
-
-        for step in self.algorithms:
-            if hasattr(step, msg):
-                getattr(step, msg)(*args, **kwargs)
-                found = True
-            elif hasattr(step, "send"):
-                step.send(msg, *args, **kwargs)
-                found = True
-
-        if not found:
-            warnings.warn(f"No step answered message {msg}.")
 
 @nice_repr
 class DspyPipelineNode(PipelineNode):
     def __init__(self, algorithm: type[DspyAlgorithmBase], registry=None) -> None:
         self.algorithm = algorithm
+        print(f"algorithm {algorithm}")
         self.input_types = algorithm.input_types()
         self.output_types = algorithm.output_type()
         self.grammar = generate_cfg(self.algorithm, registry=registry)
 
         def __eq__(self, o: "DspyPipelineNode") -> bool:
             return isinstance(o, DspyPipelineNode) and o.algorithm == self.algorithm
+
 
 @nice_repr
 class DspyModuleGenerator(dspy.Module):

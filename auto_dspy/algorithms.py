@@ -1,8 +1,8 @@
-from typing import Optional
+from typing import Callable, Optional
 from dspy.signatures.signature import Signature
 from dspy.predict import ReAct, ChainOfThought, ProgramOfThought
 
-from algorithms_base import AlgorithmSignature, DspyAlgorithmBase
+from algorithms_base import AlgorithmSignature, DspyAlgorithmBase, DspyModuleGenerator
 from autogoal_core.grammar import (
     CategoricalValue,
     ContinuousValue,
@@ -10,6 +10,7 @@ from autogoal_core.grammar import (
     BooleanValue,
 )
 from signatures import (
+    CodeGenerator,
     GenerateAnswer,
     BasicQA,
     GenerateSearchQuery,
@@ -20,6 +21,7 @@ from signatures import (
     TextClassification,
     ZeroShotTextClassification,
     ZeroShotImageClassification,
+    TeleprompterSignature,
 )
 
 from hf_tasks import (
@@ -58,6 +60,7 @@ from autogoal_core.utils import nice_repr
 from metaphor_python import Metaphor
 import os
 import interpreter
+from dspy.teleprompt import BootstrapFewShot
 
 
 def run_algorithm_with_transformers_or_timm(
@@ -73,6 +76,25 @@ def run_algorithm_with_transformers_or_timm(
         return TransformersBackend(config).run(*args)
     else:
         raise ValueError(f"Model {model_name} not supported")
+
+
+@nice_repr
+class TeleprompterAlgorithm(DspyAlgorithmBase):
+    def __init__(self) -> None:
+        pass
+
+    @classmethod
+    def is_teleprompter(cls) -> bool:
+        return True
+
+    @classmethod
+    def get_signature(cls) -> type[AlgorithmSignature]:
+        return TeleprompterSignature
+
+    def run(self, metric: Callable, dspy_module: DspyModuleGenerator, trainset):
+        teleprompter = BootstrapFewShot(metric=metric)
+        return teleprompter.compile(dspy_module(), trainset=trainset)
+
 
 @nice_repr
 class GenerateAnswerAlgorithm(DspyAlgorithmBase):
@@ -92,6 +114,7 @@ class GenerateAnswerAlgorithm(DspyAlgorithmBase):
         )
         kwargs = {"context": context, "question": question}
         return prompt_module(**kwargs)
+
 
 @nice_repr
 class BasicQAAlgorithm(DspyAlgorithmBase):
@@ -307,6 +330,10 @@ class CodeGeneratorAlgorithm(DspyAlgorithmBase):
         prompt_technique: CategoricalValue(REACT_MODULE, COT_MODULE, POT_MODULE),
     ) -> None:
         self.prompt_technique = prompt_technique
+
+    @classmethod
+    def get_signature(cls) -> type[AlgorithmSignature]:
+        return CodeGenerator
 
     def run(self, context, instruction):
         prompt_module = instantiate_prompt_module(
