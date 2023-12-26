@@ -20,8 +20,7 @@ class PESearch(SearchAlgorithm):
         learning_factor: float = 0.05,
         selection: float = 0.2,
         epsilon_greed: float = 0.1,
-        random_state: Optional[int] = None,
-        name: str = None,
+        name: str | None = None,
         save: bool = False,
         **kwargs,
     ):
@@ -30,7 +29,7 @@ class PESearch(SearchAlgorithm):
         self._selection = selection
         self._epsilon_greed = epsilon_greed
         self._model: Dict = {}
-        self._random_states = random.Random(random_state)
+        self._random_states = random.Random(self.random_state)
         self._name = name or str(time.time())
         self._save = save
 
@@ -72,9 +71,3 @@ class PESearch(SearchAlgorithm):
             with open("model-" + self._name + ".pickle", "wb") as f:
                 pickle.dump(self._model, f)
 
-    def load(self, name_pickle_file):
-        """Rewrites the probabilistic distribution of metaheuristic with the value of the name model."""
-
-        with open(name_pickle_file) as f:
-            loaded_obj = pickle.load(f)
-        self._model = loaded_obj

@@ -29,6 +29,7 @@ class SearchAlgorithm:
         evaluation_timeout: int = 1 * Min,
         memory_limit: int = 4 * Gb,
         search_timeout: int = 5 * Min,
+        random_state: int|None = None,
         target_fn=None,
         allow_duplicates=True,
         logger=None,
@@ -54,7 +55,7 @@ class SearchAlgorithm:
         self._target_fn = target_fn
         self._allow_duplicates = allow_duplicates
         self._logger = logger or Logger()
-
+        self.random_state = random_state
         self._worst_fns = tuple(
             [
                 -math.inf if should_maximize_fn else math.inf

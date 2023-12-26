@@ -19,6 +19,7 @@ from llama_cpp import Llama, LlamaGrammar
 from memory import Memory, MemoryDataModel, ValueStoreObjectModel
 import warnings
 
+
 class AlgorithmSignature(Signature):
     @classmethod
     def inputs_fields_to_maintain(cls) -> dict[str, InputField]:
@@ -105,7 +106,7 @@ class DspyAlgorithmBase(Algorithm):
 
         return True
 
-
+@nice_repr
 class DspyPipelineSpace(GraphSpace):
     def __init__(self, graph: Graph, path_to_llm: str):
         super().__init__(graph, initializer=self._initialize)
@@ -114,7 +115,7 @@ class DspyPipelineSpace(GraphSpace):
     def _initialize(self, item: PipelineNode, sampler):
         return item.sample(sampler)
 
-    def nodes(self) -> set[DspyAlgorithmBase]:
+    def nodes(self) -> set[type[DspyAlgorithmBase]]:
         """Returns a list of all algorithms (types) that exist in the graph."""
         return set(
             node.algorithm
@@ -149,7 +150,7 @@ class DspyPipeline:
 
         compiled_program = teleprompter.run(dspy_module_generator(), trainset=trainset)
         return compiled_program
-    
+
     def send(self, msg: str, *args, **kwargs):
         found = False
 
@@ -164,9 +165,9 @@ class DspyPipeline:
         if not found:
             warnings.warn(f"No step answered message {msg}.")
 
-
+@nice_repr
 class DspyPipelineNode(PipelineNode):
-    def __init__(self, algorithm: DspyAlgorithmBase, registry=None) -> None:
+    def __init__(self, algorithm: type[DspyAlgorithmBase], registry=None) -> None:
         self.algorithm = algorithm
         self.input_types = algorithm.input_types()
         self.output_types = algorithm.output_type()
@@ -175,7 +176,7 @@ class DspyPipelineNode(PipelineNode):
         def __eq__(self, o: "DspyPipelineNode") -> bool:
             return isinstance(o, DspyPipelineNode) and o.algorithm == self.algorithm
 
-
+@nice_repr
 class DspyModuleGenerator(dspy.Module):
     def __init__(
         self,
@@ -243,7 +244,7 @@ class DspyModuleGenerator(dspy.Module):
         return model.model_dump()
 
     def _generate_grammar_from_signature(
-        self, signature: AlgorithmSignature
+        self, signature: type[AlgorithmSignature]
     ) -> tuple[type[BaseModel], str]:
         fields = {
             k: (v.annotation, ...)
@@ -295,7 +296,7 @@ class PipelineSpaceBuilder:
     def find_initial_valid_nodes(
         self,
         dataset_description: str,
-        algorithms_pool: set[DspyAlgorithmBase],
+        algorithms_pool: set[type[DspyAlgorithmBase]],
     ) -> list[DspyPipelineNode]:
         """Find the nodes of the graph that are valid to stablish an edge from
         the start node(representing a high level description of the dataset that is going to be used),
@@ -347,7 +348,7 @@ class PipelineSpaceBuilder:
     def build_pipeline_graph(
         self,
         dataset_description: str,
-        registry: list[DspyAlgorithmBase],
+        registry: list[type[DspyAlgorithmBase]],
     ) -> DspyPipelineSpace:
         """Build a graph of algorithms.
 
@@ -400,9 +401,9 @@ class PipelineSpaceBuilder:
         self,
         G,
         initial_valid_nodes: list[DspyPipelineNode],
-        pool: set[DspyAlgorithmBase],
+        pool: set[type[DspyAlgorithmBase]],
         teleprompter_node: DspyPipelineNode,
-        registry: list[DspyAlgorithmBase],
+        registry: list[type[DspyAlgorithmBase]],
     ):
         for start_node in initial_valid_nodes:
             stack = [start_node]

@@ -37,7 +37,13 @@ from hf_tasks import (
     TABLE_QUESTION_ANSWERING,
     ZERO_SHOT_IMAGE_CLASSIFICATION,
 )
-from constants import TIMM_MODELS_SUPPORTED, TRANSFORMERS_MODELS_SUPPORTED, REACT_MODULE, COT_MODULE, POT_MODULE
+from constants import (
+    TIMM_MODELS_SUPPORTED,
+    TRANSFORMERS_MODELS_SUPPORTED,
+    REACT_MODULE,
+    COT_MODULE,
+    POT_MODULE,
+)
 from utils import instantiate_prompt_module
 
 from model_backends import (
@@ -46,6 +52,8 @@ from model_backends import (
     TransformersBackendConfig,
     TimmBackendConfig,
 )
+
+from autogoal_core.utils import nice_repr
 
 from metaphor_python import Metaphor
 import os
@@ -66,7 +74,7 @@ def run_algorithm_with_transformers_or_timm(
     else:
         raise ValueError(f"Model {model_name} not supported")
 
-
+@nice_repr
 class GenerateAnswerAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
@@ -79,11 +87,13 @@ class GenerateAnswerAlgorithm(DspyAlgorithmBase):
         return GenerateAnswer
 
     def run(self, context, question):
-        prompt_module = instantiate_prompt_module(self.prompt_technique, self.get_signature())
+        prompt_module = instantiate_prompt_module(
+            self.prompt_technique, self.get_signature()
+        )
         kwargs = {"context": context, "question": question}
         return prompt_module(**kwargs)
 
-
+@nice_repr
 class BasicQAAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
@@ -96,11 +106,14 @@ class BasicQAAlgorithm(DspyAlgorithmBase):
         return BasicQA
 
     def run(self, question):
-        prompt_module = instantiate_prompt_module(self.prompt_technique, self.get_signature())
+        prompt_module = instantiate_prompt_module(
+            self.prompt_technique, self.get_signature()
+        )
         kwargs = {"question": question}
         return prompt_module(**kwargs)
 
 
+@nice_repr
 class GenerateSearchQueryAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
@@ -113,7 +126,9 @@ class GenerateSearchQueryAlgorithm(DspyAlgorithmBase):
         return GenerateSearchQuery
 
     def run(self, context, question):
-        prompt_module = instantiate_prompt_module(self.prompt_technique, self.get_signature())
+        prompt_module = instantiate_prompt_module(
+            self.prompt_technique, self.get_signature()
+        )
         kwargs = {"context": context, "question": question}
         search_query = prompt_module(**kwargs)
         METAPHOR_API_KEY = os.getenv("METAPHOR_API_KEY")
@@ -126,6 +141,7 @@ class GenerateSearchQueryAlgorithm(DspyAlgorithmBase):
         return [c.extract for c in contents_result.contents]
 
 
+@nice_repr
 class ImageCaptioningAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
@@ -138,11 +154,14 @@ class ImageCaptioningAlgorithm(DspyAlgorithmBase):
         return ImageCaptioning
 
     def run(self, image):
-        prompt_module = instantiate_prompt_module(self.prompt_technique, self.get_signature())
+        prompt_module = instantiate_prompt_module(
+            self.prompt_technique, self.get_signature()
+        )
         kwargs = {"image": image}
         return prompt_module(**kwargs)
 
 
+@nice_repr
 class ImageClassificationAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
@@ -172,6 +191,7 @@ class ImageClassificationAlgorithm(DspyAlgorithmBase):
         )
 
 
+@nice_repr
 class LanguageTranslationAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
@@ -191,6 +211,7 @@ class LanguageTranslationAlgorithm(DspyAlgorithmBase):
         )
 
 
+@nice_repr
 class SummarizeTextAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
@@ -212,6 +233,7 @@ class SummarizeTextAlgorithm(DspyAlgorithmBase):
         )
 
 
+@nice_repr
 class TextClassificationAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
@@ -234,6 +256,7 @@ class TextClassificationAlgorithm(DspyAlgorithmBase):
         )
 
 
+@nice_repr
 class ZeroShotTextClassificationAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
@@ -257,6 +280,7 @@ class ZeroShotTextClassificationAlgorithm(DspyAlgorithmBase):
         )
 
 
+@nice_repr
 class ZeroShotImageClassificationAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
@@ -276,6 +300,7 @@ class ZeroShotImageClassificationAlgorithm(DspyAlgorithmBase):
         )
 
 
+@nice_repr
 class CodeGeneratorAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
@@ -284,7 +309,9 @@ class CodeGeneratorAlgorithm(DspyAlgorithmBase):
         self.prompt_technique = prompt_technique
 
     def run(self, context, instruction):
-        prompt_module = instantiate_prompt_module(self.prompt_technique, self.get_signature())
+        prompt_module = instantiate_prompt_module(
+            self.prompt_technique, self.get_signature()
+        )
         kwargs = {"context": context, "instruction": instruction}
         code = prompt_module(**kwargs)
         if not isinstance(self.prompt_technique, ProgramOfThought):
