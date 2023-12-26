@@ -31,7 +31,7 @@ class Memory:
         client = QdrantClient(":memory:")
         client.create_collection(
             collection_name=self.collection_name,
-            vectors_config=self.client.get_fastembed_vector_params(),
+            vectors_config=client.get_fastembed_vector_params(),
         )
         return client
 
