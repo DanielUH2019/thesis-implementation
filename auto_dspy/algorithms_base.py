@@ -1,6 +1,7 @@
 import abc
 from typing import Any, Callable, Optional, Tuple
-from dspy.signatures.field import InputField, OutputField
+from uuid import uuid4
+from dspy.signatures.field import InputField, OutputField, Field
 from dspy.signatures.signature import Signature
 from dspy.teleprompt import Teleprompter
 import dspy
@@ -60,14 +61,14 @@ class DspyAlgorithmBase(Algorithm):
         return tuple(names)
 
     @classmethod
-    def output_type(cls) -> list[OutputField]:
+    def output_type(cls) -> tuple[dict[str, OutputField], dict[str, InputField]]:
         """Returns a list of the expected {OutputField} of the `run` method."""
         signature = cls.get_signature()
-        return [
-            signature.kwargs[key].annotation
-            for key in signature.kwargs
-            if isinstance(signature.kwargs[key], OutputField)
-        ] + [v for v in signature.inputs_fields_to_maintain().values()]
+
+        outputs = {
+            k: v for k, v in signature.kwargs.items() if isinstance(v, OutputField)
+        }
+        return outputs, signature.inputs_fields_to_maintain()
 
     @abc.abstractmethod
     def run(self, *args, **kwargs):
@@ -76,8 +77,8 @@ class DspyAlgorithmBase(Algorithm):
 
     @classmethod
     def is_compatible_with(
-        cls, memory: Memory, similarity_score=0.6, modify_memory=True
-    ) -> bool:
+        cls, memory: Memory, similarity_score=0.6
+    ) -> tuple[bool, dict[str, InputField]]:
         """
         Determines if the current algorithm can be called using the data stored in the memory,
         i.e., based on the descriptions of the required input for this algorithm,
@@ -87,24 +88,31 @@ class DspyAlgorithmBase(Algorithm):
         """
 
         inputs = cls.input_types()
-        matches_id = []
+        matches = {}
         for i in inputs:
             results = memory.query(str(i.desc), limit=1)
-            if results[0].score >= similarity_score:
-                matches_id.append(results[0].id)
-            else:
-                return False
+            # print(f"len de resultados query {results}")
+            if (
+                len(results["distances"][0]) == 0
+                or results["distances"][0][0] < similarity_score
+            ):
+                return False, {}
 
-        if not modify_memory:
-            return True
+            matches[results["ids"][0][0]] = i
+        return True, matches
 
-        for id in matches_id:
-            memory.delete_from_db(id)
 
-        for o in cls.output_type():
-            memory.insert(o.desc)
+@nice_repr
+class DspyPipelineNode(PipelineNode):
+    def __init__(self, algorithm: type[DspyAlgorithmBase], registry=None) -> None:
+        self.algorithm = algorithm
+        print(f"algorithm {algorithm}")
+        self.input_types = algorithm.input_types()
+        self.output_types = algorithm.output_type()
+        self.grammar = generate_cfg(self.algorithm, registry=registry)
 
-        return True
+        def __eq__(self, o: "DspyPipelineNode") -> bool:
+            return isinstance(o, DspyPipelineNode) and o.algorithm == self.algorithm
 
 
 @nice_repr
@@ -113,7 +121,7 @@ class DspyPipelineSpace(GraphSpace):
         super().__init__(graph, initializer=self._initialize)
         self.path_to_llm = path_to_llm
 
-    def _initialize(self, item: PipelineNode, sampler):
+    def _initialize(self, item: DspyPipelineNode, sampler):
         return item.sample(sampler)
 
     def nodes(self) -> set[type[DspyAlgorithmBase]]:
@@ -150,22 +158,11 @@ class DspyPipeline:
         dspy_module_generator = DspyModuleGenerator(self.algorithms, self.path_to_llm)
 
         compiled_program = teleprompter.run(
-            dspy_module_generator, trainset=trainset, metric=metric
+            metric=metric,
+            dspy_module=dspy_module_generator,
+            trainset=trainset,
         )
         return compiled_program
-
-
-@nice_repr
-class DspyPipelineNode(PipelineNode):
-    def __init__(self, algorithm: type[DspyAlgorithmBase], registry=None) -> None:
-        self.algorithm = algorithm
-        print(f"algorithm {algorithm}")
-        self.input_types = algorithm.input_types()
-        self.output_types = algorithm.output_type()
-        self.grammar = generate_cfg(self.algorithm, registry=registry)
-
-        def __eq__(self, o: "DspyPipelineNode") -> bool:
-            return isinstance(o, DspyPipelineNode) and o.algorithm == self.algorithm
 
 
 @nice_repr
@@ -197,19 +194,27 @@ class DspyModuleGenerator(dspy.Module):
                 )
             else:
                 args = self._build_input_args(algorithm, memory)
-            output = algorithm.run(**args)
+            output_values = list(algorithm.run(**args))
             inputs_to_maintain = set(
-                algorithm.get_signature().inputs_fields_to_maintain()
+                algorithm.get_signature().inputs_fields_to_maintain().keys()
             )
             inputs_to_delete = set(algorithm.input_args()) - inputs_to_maintain
+            output_types, _ = algorithm.output_type()
             for key in inputs_to_delete:
                 memory.delete_from_store(key)
-            for k, v, desc in output:
+            counter = 0
+            for k, v in output_types.items():
                 memory.insert_to_value_store(
-                    [ValueStoreObjectModel(key_name=k, value=v, description=desc)]
+                    [
+                        ValueStoreObjectModel(
+                            key_name=k, value=output_values[counter], description=v.desc
+                        )
+                    ]
                 )
+                counter += 1
+
             if i == len(self.algorithms) - 1:
-                final_output = output
+                final_output = output_values
         return final_output
 
     def _extract_arguments_to_call_initial_algorithm(
@@ -229,7 +234,7 @@ class DspyModuleGenerator(dspy.Module):
         )
         grammar = LlamaGrammar.from_string(grammar_text)
 
-        response = llm(instruction, grammar=grammar)
+        response = llm(instruction, grammar=grammar, temperature=0.0)
         json_response = response["choices"][0]["text"]
 
         model = pydantic_model.model_validate_json(json_response)
@@ -256,7 +261,7 @@ class DspyModuleGenerator(dspy.Module):
         required_input_keys = set(
             [
                 k
-                for k, v in algorithm.get_signature().kwargs
+                for k, v in algorithm.get_signature().kwargs.items()
                 if isinstance(v, InputField)
             ]
         )
@@ -269,7 +274,7 @@ class DspyModuleGenerator(dspy.Module):
         if len(unmatched_keys) > 0:
             most_similar_keys = [
                 memory.retrieve_stored_value(k, v.desc)
-                for k, v in algorithm.get_signature().kwargs
+                for k, v in algorithm.get_signature().kwargs.items()
                 if k in unmatched_keys
             ]
             result.update(most_similar_keys)
@@ -372,8 +377,22 @@ class PipelineSpaceBuilder:
 
         # We'll make a DFS exploration of the pipeline space from every initial valid node.
         # For every open node we will add to the graph every node to which it can connect.
-
-        self._dfs(G, initial_valid_nodes, pool, teleprompter_node, registry)
+        for start_node in initial_valid_nodes:
+            initial_memory = Memory(str(uuid4()))
+            output_types, inputs_to_mantain = start_node.algorithm.output_type()
+            print("output types", output_types)
+            initial_memory.insert([v.desc for k, v in output_types.items()], None)
+            initial_memory.insert([v.desc for k, v in inputs_to_mantain.items()], None)
+            self._dfs(
+                G,
+                start_node,
+                teleprompter_node,
+                initial_memory,
+                set(),
+                pool,
+                initial_valid_nodes,
+                registry,
+            )
 
         G.add_edge(teleprompter_node, GraphSpace.End)
 
@@ -387,48 +406,109 @@ class PipelineSpaceBuilder:
         except KeyError:
             raise TypeError("No pipelines can be found!")
 
-        return DspyPipelineSpace(G, path_to_llm=self.path_to_llm)
+        pipeline_space = DspyPipelineSpace(G, path_to_llm=self.path_to_llm)
+        print(f"pipeline space {pipeline_space}")
+        nx.draw_shell(G, with_labels=True, font_weight="bold")
+        return pipeline_space
+
+    # def _dfs(
+    #     self,
+    #     G,
+    #     initial_valid_nodes: list[DspyPipelineNode],
+    #     pool: set[type[DspyAlgorithmBase]],
+    #     teleprompter_node: DspyPipelineNode,
+    #     registry: list[type[DspyAlgorithmBase]],
+    # ):
+    #     for start_node in initial_valid_nodes:
+    #         stack = [(start_node, {})]
+    #         closed_nodes = set()
+
+    #         # Memory to be used for simulating algorithms execution and stablish compatibility
+    #         memory = Memory()
+    # output_types = start_node.algorithm.output_type()
+    # memory.insert([x.desc for x in output_types[0]])
+    # memory.insert([x.desc for x in output_types[1]])
+    # memory.insert(list(start_node.algorithm.input_args()))
+    #         while stack:
+    #             node, node_matches = stack.pop()
+
+    #             # G.add_edge(node, teleprompter_node)
+    #             if node != start_node:
+
+    #             # Here are all the algorithms that could be added new at this point in the graph
+    #             for algorithm in pool:
+    #                 is_compatible, matches = algorithm.is_compatible_with(memory)
+    #                 if not is_compatible:
+    #                     continue
+
+    #                 # We never want to apply the same exact algorithm twice
+    #                 if algorithm == node.algorithm:
+    #                     continue
+
+    #                 p = DspyPipelineNode(
+    #                     algorithm=algorithm,
+    #                     registry=registry,
+    #                 )
+
+    #                 G.add_edge(node, p)
+
+    #                 if p not in closed_nodes and p not in initial_valid_nodes:
+    #                     stack.append((p, matches))
+
+    #             # TODO Find a way to check if the last node would be sufficient to generate a valid solution
+    #             # for a problem based on the dataset description, maybe with a dspy program
+    #             G.add_edge(node, teleprompter_node)
+
+    #             closed_nodes.add(node)
 
     def _dfs(
         self,
-        G,
-        initial_valid_nodes: list[DspyPipelineNode],
+        G: Graph,
+        node: DspyPipelineNode,
+        telepropmter_node: DspyPipelineNode,
+        memory: Memory,
+        closed_nodes: set[DspyPipelineNode],
         pool: set[type[DspyAlgorithmBase]],
-        teleprompter_node: DspyPipelineNode,
+        initial_valid_nodes: list[DspyPipelineNode],
         registry: list[type[DspyAlgorithmBase]],
     ):
-        for start_node in initial_valid_nodes:
-            stack = [start_node]
-            closed_nodes = set()
+        for algorithm in pool:
+            is_compatible, matches = algorithm.is_compatible_with(memory)
+            if not is_compatible or algorithm == node.algorithm:
+                continue
 
-            # Memory to be used for simulating algorithms execution and stablish compatibility
-            memory = Memory()
+            p = DspyPipelineNode(
+                algorithm=algorithm,
+                registry=registry,
+            )
 
-            while stack:
-                node = stack.pop()
-                G.add_edge(node, teleprompter_node)
+            G.add_edge(node, p)
+            G.add_edge(node, telepropmter_node)
 
-                # Here are all the algorithms that could be added new at this point in the graph
-                for algorithm in pool:
-                    if not algorithm.is_compatible_with(memory):
-                        continue
+            if p not in closed_nodes and p not in initial_valid_nodes:
+                closed_nodes.add(p)
+                data_copy = memory.get_all_data()
+                cloned_memory = Memory(str(uuid4()))
+                cloned_memory.upload_records(
+                    documents=data_copy["documents"],
+                    ids=data_copy["ids"],
+                    metadatas=data_copy["metadatas"],
+                )
+                o, i = node.algorithm.output_type()
+                for key in matches:
+                    if key not in i:
+                        cloned_memory.delete_from_db(key)
+                    else:
+                        cloned_memory.update(key, matches[key].desc)
 
-                    # We never want to apply the same exact algorithm twice
-                    if algorithm == node.algorithm:
-                        continue
-
-                    p = DspyPipelineNode(
-                        algorithm=algorithm,
-                        registry=registry,
-                    )
-
-                    G.add_edge(node, p)
-
-                    if p not in closed_nodes and p not in initial_valid_nodes:
-                        initial_valid_nodes.append(p)
-
-                # TODO Find a way to check if the last node would be sufficient to generate a valid solution
-                # for a problem based on the dataset description, maybe with a dspy program
-                G.add_edge(node, teleprompter_node)
-
-                closed_nodes.add(node)
+                cloned_memory.insert([v.desc for k, v in o.items()], None)
+                self._dfs(
+                    G,
+                    p,
+                    telepropmter_node,
+                    cloned_memory,
+                    closed_nodes,
+                    pool,
+                    initial_valid_nodes,
+                    registry,
+                )
