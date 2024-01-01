@@ -20,13 +20,14 @@ class TimmBackendConfig(BackendConfig):
 
 
 class ModelBackend(ABC):
-    @abstractmethod
-    def __load_model(self, config: BackendConfig):
-        pass
+    pass
+#     # @abstractmethod
+#     # def __load_model(self, config: BackendConfig):
+#     #     pass
 
-    @abstractmethod
-    def run(self, input: str):
-        pass
+#     @abstractmethod
+#     def run(self, input: str):
+#         pass
 
 
 class TransformersBackend(ModelBackend):
@@ -36,8 +37,8 @@ class TransformersBackend(ModelBackend):
     def __load_model(self, config: TransformersBackendConfig):
         return pipeline(task=config.task, model=config.model)
 
-    def run(self, input: str):
-        return self.model(input)
+    def run(self, *args):
+        return self.model(*args)
 
 
 class TimmBackend(ModelBackend):

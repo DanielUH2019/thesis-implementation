@@ -1,4 +1,5 @@
 from typing import Callable, Optional
+from dspy.signatures.field import OutputField
 from dspy.signatures.signature import Signature
 from dspy.predict import ReAct, ChainOfThought, ProgramOfThought
 
@@ -22,6 +23,7 @@ from signatures import (
     ZeroShotTextClassification,
     ZeroShotImageClassification,
     TeleprompterSignature,
+    SimpleAnswer
 )
 
 from hf_tasks import (
@@ -75,7 +77,7 @@ def run_algorithm_with_transformers_or_timm(
         config = TransformersBackendConfig(model=model_name, task=task.task_name)
         return TransformersBackend(config).run(*args)
     else:
-        raise ValueError(f"Model {model_name} not supported")
+        raise ValueError(f"Model {model_name} , task {task} and args: {args} not supported")
 
 
 @nice_repr
@@ -93,14 +95,15 @@ class TeleprompterAlgorithm(DspyAlgorithmBase):
 
     def run(self, metric: Callable, dspy_module: DspyModuleGenerator, trainset):
         teleprompter = BootstrapFewShot(metric=metric)
-        return teleprompter.compile(dspy_module(), trainset=trainset)
+        print('mira', trainset)
+        return teleprompter.compile(dspy_module, trainset=trainset)
 
 
 @nice_repr
 class GenerateAnswerAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
-        prompt_technique: CategoricalValue(REACT_MODULE, COT_MODULE, POT_MODULE),
+        prompt_technique: CategoricalValue(COT_MODULE),
     ):
         self.prompt_technique = prompt_technique
 
@@ -113,14 +116,17 @@ class GenerateAnswerAlgorithm(DspyAlgorithmBase):
             self.prompt_technique, self.get_signature()
         )
         kwargs = {"context": context, "question": question}
-        return prompt_module(**kwargs)
+        output_name = [k for k, v in self.get_signature().kwargs.items() if isinstance(v, OutputField)][0]
+        result = prompt_module(**kwargs)
+        print(f'hakuna: {result}')
+        return result.completions[output_name]
 
 
 @nice_repr
 class BasicQAAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
-        prompt_technique: CategoricalValue(REACT_MODULE, COT_MODULE, POT_MODULE),
+        prompt_technique: CategoricalValue(COT_MODULE),
     ):
         self.prompt_technique = prompt_technique
 
@@ -133,201 +139,224 @@ class BasicQAAlgorithm(DspyAlgorithmBase):
             self.prompt_technique, self.get_signature()
         )
         kwargs = {"question": question}
-        return prompt_module(**kwargs)
+        output_name = [k for k, v in self.get_signature().kwargs.items() if isinstance(v, OutputField)][0]
+        result = prompt_module(**kwargs)
+        print(f'hakuna: {result}')
+        return result.completions[output_name]
 
+# @nice_repr
+# class GenerateAndRunSearchQueryAlgorithm(DspyAlgorithmBase):
+#     def __init__(
+#         self,
+#         prompt_technique: CategoricalValue(COT_MODULE),
+#     ):
+#         self.prompt_technique = prompt_technique
+
+#     @classmethod
+#     def get_signature(cls) -> type[AlgorithmSignature]:
+#         return GenerateSearchQuery
+
+#     def run(self, question):
+#         prompt_module = instantiate_prompt_module(
+#             self.prompt_technique, self.get_signature()
+#         )
+#         kwargs = {"question": question}
+#         output_name = [k for k, v in self.get_signature().kwargs.items() if isinstance(v, OutputField)][0]
+#         result = prompt_module(**kwargs)
+#         print(f'hakuna: {result}')
+#         search_query = result.completions[output_name]
+#         METAPHOR_API_KEY = os.getenv("METAPHOR_API_KEY")
+#         assert (
+#             METAPHOR_API_KEY is not None
+#         ), "You need to put a METAPHOR_API_KEY in a .env to be able to run search queries"
+#         metaphor = Metaphor(METAPHOR_API_KEY)
+#         search_response = metaphor.search(search_query, use_autoprompt=True)
+#         contents_result = search_response.get_contents()
+#         return [c.extract for c in contents_result.contents]
 
 @nice_repr
-class GenerateSearchQueryAlgorithm(DspyAlgorithmBase):
+class SimpleAnswerAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
-        prompt_technique: CategoricalValue(REACT_MODULE, COT_MODULE),
+        prompt_technique: CategoricalValue(COT_MODULE),
     ):
         self.prompt_technique = prompt_technique
 
     @classmethod
     def get_signature(cls) -> type[AlgorithmSignature]:
-        return GenerateSearchQuery
+        return SimpleAnswer
 
-    def run(self, context, question):
+    def run(self, input):
         prompt_module = instantiate_prompt_module(
             self.prompt_technique, self.get_signature()
         )
-        kwargs = {"context": context, "question": question}
-        search_query = prompt_module(**kwargs)
-        METAPHOR_API_KEY = os.getenv("METAPHOR_API_KEY")
-        assert (
-            METAPHOR_API_KEY is not None
-        ), "You need to put a METAPHOR_API_KEY in a .env to be able to run search queries"
-        metaphor = Metaphor(METAPHOR_API_KEY)
-        search_response = metaphor.search(search_query, use_autoprompt=True)
-        contents_result = search_response.get_contents()
-        return [c.extract for c in contents_result.contents]
+        kwargs = {"input": input}
+        output_name = [k for k, v in self.get_signature().kwargs.items() if isinstance(v, OutputField)][0]
+        result = prompt_module(**kwargs)
+        print(f'hakuna: {result}')
+        return result.completions[output_name]
+
+# @nice_repr
+# class ImageCaptioningAlgorithm(DspyAlgorithmBase):
+#     def __init__(
+#         self,
+#         prompt_technique: CategoricalValue(REACT_MODULE, COT_MODULE),
+#     ):
+#         self.prompt_technique = prompt_technique
+
+#     @classmethod
+#     def get_signature(cls) -> type[AlgorithmSignature]:
+#         return ImageCaptioning
+
+#     def run(self, image):
+#         prompt_module = instantiate_prompt_module(
+#             self.prompt_technique, self.get_signature()
+#         )
+#         kwargs = {"image": image}
+#         return prompt_module(**kwargs)
 
 
-@nice_repr
-class ImageCaptioningAlgorithm(DspyAlgorithmBase):
-    def __init__(
-        self,
-        prompt_technique: CategoricalValue(REACT_MODULE, COT_MODULE),
-    ):
-        self.prompt_technique = prompt_technique
+# @nice_repr
+# class ImageClassificationAlgorithm(DspyAlgorithmBase):
+#     def __init__(
+#         self,
+#         models: CategoricalValue(
+#             "mobilenetv3_large_100",
+#             "adv_inception_v3",
+#             "cspdarknet53",
+#             "cspresnext50",
+#             "densenet121",
+#             "densenet161",
+#             "densenet169",
+#             "densenet201",
+#             "densenetblur121d",
+#             "dla34",
+#             "dla46_c",
+#         ),
+#     ):
+#         self.model_name = models
 
-    @classmethod
-    def get_signature(cls) -> type[AlgorithmSignature]:
-        return ImageCaptioning
+#     @classmethod
+#     def get_signature(cls) -> type[AlgorithmSignature]:
+#         return ImageClassification
 
-    def run(self, image):
-        prompt_module = instantiate_prompt_module(
-            self.prompt_technique, self.get_signature()
-        )
-        kwargs = {"image": image}
-        return prompt_module(**kwargs)
-
-
-@nice_repr
-class ImageClassificationAlgorithm(DspyAlgorithmBase):
-    def __init__(
-        self,
-        models: CategoricalValue(
-            "mobilenetv3_large_100",
-            "adv_inception_v3",
-            "cspdarknet53",
-            "cspresnext50",
-            "densenet121",
-            "densenet161",
-            "densenet169",
-            "densenet201",
-            "densenetblur121d",
-            "dla34",
-            "dla46_c",
-        ),
-    ):
-        self.model_name = models
-
-    @classmethod
-    def get_signature(cls) -> type[AlgorithmSignature]:
-        return ImageClassification
-
-    def run(self, image):
-        return run_algorithm_with_transformers_or_timm(
-            self.model_name, IMAGE_CLASSIFICATION, image
-        )
+#     def run(self, image):
+#         return run_algorithm_with_transformers_or_timm(
+#             self.model_name, IMAGE_CLASSIFICATION, image
+#         )
 
 
-@nice_repr
-class LanguageTranslationAlgorithm(DspyAlgorithmBase):
-    def __init__(
-        self,
-        models: CategoricalValue(
-            "t5-small", "t5-base", "t5-large", "mbart-large-50-many-to-many-mmt"
-        ),
-    ):
-        self.model_name = models
+# @nice_repr
+# class LanguageTranslationAlgorithm(DspyAlgorithmBase):
+#     def __init__(
+#         self,
+#         models: CategoricalValue(
+#             "t5-small", "t5-base", "t5-large", "mbart-large-50-many-to-many-mmt"
+#         ),
+#     ):
+#         self.model_name = models
 
-    @classmethod
-    def get_signature(cls) -> type[AlgorithmSignature]:
-        return LanguageTranslation
+#     @classmethod
+#     def get_signature(cls) -> type[AlgorithmSignature]:
+#         return LanguageTranslation
 
-    def run(self, text):
-        return run_algorithm_with_transformers_or_timm(
-            self.model_name, TRANSLATION, text
-        )
-
-
-@nice_repr
-class SummarizeTextAlgorithm(DspyAlgorithmBase):
-    def __init__(
-        self,
-        models: CategoricalValue(
-            "facebook/bart-large-cnn",
-            "Falconsai/text_summarization",
-            "mbart-large-50-many-to-many-mmt",
-        ),
-    ):
-        self.model_name = models
-
-    @classmethod
-    def get_signature(cls) -> type[AlgorithmSignature]:
-        return SummarizeText
-
-    def run(self, text):
-        return run_algorithm_with_transformers_or_timm(
-            self.model_name, SUMMARIZATION, text
-        )
+#     def run(self, text):
+#         return run_algorithm_with_transformers_or_timm(
+#             self.model_name, TRANSLATION, text
+#         )
 
 
-@nice_repr
-class TextClassificationAlgorithm(DspyAlgorithmBase):
-    def __init__(
-        self,
-        models: CategoricalValue(
-            "distilbert-base-uncased",
-            "distilbert-base-uncased-finetuned-sst-2-english",
-            "distilbert-base-cased",
-            "distilbert-base-multilingual-cased",
-        ),
-    ):
-        self.model_name = models
+# @nice_repr
+# class SummarizeTextAlgorithm(DspyAlgorithmBase):
+#     def __init__(
+#         self,
+#         models: CategoricalValue(
+#             "facebook/bart-large-cnn",
+#             # "Falconsai/text_summarization",
+#             # "mbart-large-50-many-to-many-mmt",
+#         ),
+#     ):
+#         self.model_name = models
 
-    @classmethod
-    def get_signature(cls) -> type[AlgorithmSignature]:
-        return TextClassification
+#     @classmethod
+#     def get_signature(cls) -> type[AlgorithmSignature]:
+#         return SummarizeText
 
-    def run(self, text):
-        return run_algorithm_with_transformers_or_timm(
-            self.model_name, TEXT_CLASSIFICATION, text
-        )
-
-
-@nice_repr
-class ZeroShotTextClassificationAlgorithm(DspyAlgorithmBase):
-    def __init__(
-        self,
-        models: CategoricalValue(
-            "facebook/bart-large-mnli",
-            "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli",
-            "MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli",
-            "facebook/bart-large-mnli",
-            "joeddav/xlm-roberta-large-xnli",
-        ),
-    ):
-        self.model_name = models
-
-    @classmethod
-    def get_signature(cls) -> type[AlgorithmSignature]:
-        return ZeroShotTextClassification
-
-    def run(self, text):
-        return run_algorithm_with_transformers_or_timm(
-            self.model_name, ZERO_SHOT_CLASSIFICATION, text
-        )
+#     def run(self, text):
+#         return run_algorithm_with_transformers_or_timm(
+#             self.model_name, SUMMARIZATION, text
+#         )
 
 
-@nice_repr
-class ZeroShotImageClassificationAlgorithm(DspyAlgorithmBase):
-    def __init__(
-        self,
-        models: CategoricalValue(
-            "openai/clip-vit-large-patch14",
-        ),
-    ):
-        self.model_name = models
+# @nice_repr
+# class TextClassificationAlgorithm(DspyAlgorithmBase):
+#     def __init__(
+#         self,
+#         models: CategoricalValue(
+#             "distilbert-base-uncased",
+#         ),
+#     ):
+#         self.model_name = models
 
-    @classmethod
-    def get_signature(cls) -> type[AlgorithmSignature]:
-        return ZeroShotImageClassification
+#     @classmethod
+#     def get_signature(cls) -> type[AlgorithmSignature]:
+#         return TextClassification
 
-    def run(self, image):
-        return run_algorithm_with_transformers_or_timm(
-            self.model_name, ZERO_SHOT_IMAGE_CLASSIFICATION, image
-        )
+#     def run(self, text):
+#         return run_algorithm_with_transformers_or_timm(
+#             self.model_name, TEXT_CLASSIFICATION, text
+#         )
+
+
+# @nice_repr
+# class ZeroShotTextClassificationAlgorithm(DspyAlgorithmBase):
+#     def __init__(
+#         self,
+#         models: CategoricalValue(
+#             "facebook/bart-large-mnli",
+#             "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli",
+#             "MoritzLaurer/multilingual-MiniLMv2-L6-mnli-xnli",
+#             "facebook/bart-large-mnli",
+#             "joeddav/xlm-roberta-large-xnli",
+#         ),
+#     ):
+#         self.model_name = models
+
+#     @classmethod
+#     def get_signature(cls) -> type[AlgorithmSignature]:
+#         return ZeroShotTextClassification
+
+#     def run(self, text):
+#         return run_algorithm_with_transformers_or_timm(
+#             self.model_name, ZERO_SHOT_CLASSIFICATION, text
+#         )
+
+
+# @nice_repr
+# class ZeroShotImageClassificationAlgorithm(DspyAlgorithmBase):
+#     def __init__(
+#         self,
+#         models: CategoricalValue(
+#             "openai/clip-vit-large-patch14",
+#         ),
+#     ):
+#         self.model_name = models
+
+#     @classmethod
+#     def get_signature(cls) -> type[AlgorithmSignature]:
+#         return ZeroShotImageClassification
+
+#     def run(self, image):
+#         return run_algorithm_with_transformers_or_timm(
+#             self.model_name, ZERO_SHOT_IMAGE_CLASSIFICATION, image
+        # )
 
 
 @nice_repr
 class CodeGeneratorAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
-        prompt_technique: CategoricalValue(REACT_MODULE, COT_MODULE, POT_MODULE),
+        prompt_technique: CategoricalValue(COT_MODULE),
     ) -> None:
         self.prompt_technique = prompt_technique
 
@@ -340,7 +369,10 @@ class CodeGeneratorAlgorithm(DspyAlgorithmBase):
             self.prompt_technique, self.get_signature()
         )
         kwargs = {"context": context, "instruction": instruction}
-        code = prompt_module(**kwargs)
+        output_name = [k for k, v in self.get_signature().kwargs.items() if isinstance(v, OutputField)][0]
+        result = prompt_module(**kwargs)
+        print(f'hakuna: {result}')
+        code = result.completions[output_name]
         if not isinstance(self.prompt_technique, ProgramOfThought):
             interpreter.local = True
             interpreter.temperature = 0

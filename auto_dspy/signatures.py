@@ -15,7 +15,7 @@ class GenerateQuestion(AlgorithmSignature):
 
     instruction = InputField(desc="the instruction to be understood")
     question = OutputField(
-        desc="the question that can be asked to better understand the instruction"
+        desc="a question that can be asked to better understand the instruction"
     )
 
     @classmethod
@@ -24,12 +24,17 @@ class GenerateQuestion(AlgorithmSignature):
 
 
 class GenerateSearchQuery(AlgorithmSignature):
-    """Write a simple search query that will help answer a complex question."""
+    """Write and run simple search query that will help answer a complex question."""
 
-    context = InputField(desc="may contain relevant facts")
-    question = InputField()
-    query = OutputField()
+    question = InputField(desc='question')
+    answer = OutputField(desc='may contain relevant facts')
 
+
+class SimpleAnswer(AlgorithmSignature):
+    """Directly respond to an input text"""
+
+    input = InputField(desc='quesion or instruction')
+    aswer = OutputField(desc='answer to a question')
 
 class GenerateAnswer(AlgorithmSignature):
     """Answer questions with short factoid answers."""

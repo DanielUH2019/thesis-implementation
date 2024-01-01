@@ -15,6 +15,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 class AutoDspy:
     def __init__(
         self,
+        lm,
         path_to_llm: str,
         search_algorithm: type[SearchAlgorithm],
         metric: Callable,
@@ -37,12 +38,11 @@ class AutoDspy:
         if random_state:
             np.random.seed(random_state)
 
-        lm = dspy.OpenAI(model=core_llm_name)
-        dspy.settings.configure(lm=lm)
+        # dspy.settings.configure(lm=lm)
 
-    def fit(self, dataset_description: str, trainset):
+    def fit(self, dataset_description: str, trainset, examples_descriptions: dict[str, str]):
         print(os.listdir())
-        pipeline_space_builder = PipelineSpaceBuilder(self.path_to_llm)
+        pipeline_space_builder = PipelineSpaceBuilder(self.path_to_llm, examples_descriptions)
         search = self.search_algorithm(
             pipeline_space_builder.build_pipeline_graph(
                 dataset_description,
@@ -53,6 +53,7 @@ class AutoDspy:
             errors=self.errors,
             **self.search_kwargs,
         )
+        
         self.best_pipelines_, self.best_scores_ = search.run(self.search_iterations)
 
     def _find_algorithms(self) -> list[type[DspyAlgorithmBase]]:

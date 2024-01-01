@@ -13,7 +13,7 @@ TIMM_MODELS_SUPPORTED = [
 ]
 
 TRANSFORMERS_MODELS_SUPPORTED = [
-    
+    "distilbert-base-uncased"
 ]
 
 LLAMA_CPP_SUPPORTED_MODELS = [
