@@ -40,8 +40,7 @@ class AutoDspy:
 
         # dspy.settings.configure(lm=lm)
 
-    def fit(self, dataset_description: str, trainset, examples_descriptions: dict[str, str]):
-        print(os.listdir())
+    def fit(self, dataset_description: str, trainset, examples_descriptions: dict[str, str], **kwargs):
         pipeline_space_builder = PipelineSpaceBuilder(self.path_to_llm, examples_descriptions)
         search = self.search_algorithm(
             pipeline_space_builder.build_pipeline_graph(
@@ -70,6 +69,6 @@ class AutoDspy:
 
         def fitness_function(pipeline: DspyPipeline):
             compiled_program = pipeline.run(trainset=trainset, metric=metric)
-            return evaluator(compiled_program, metric= metric)
+            return (evaluator(compiled_program, metric= metric),)
         
         return fitness_function
