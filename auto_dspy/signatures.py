@@ -78,9 +78,9 @@ class ZeroShotTextClassification(AlgorithmSignature):
 
 
 class TextClassification(AlgorithmSignature):
-    """Analyze a given piece of text and classify"""
+    """Analyze the sentiment of a given piece of text and classify it"""
 
-    text = InputField(desc="the text for sentiment analysis")
+    text = InputField(desc="text for sentiment analysis")
     predicted_classification = OutputField(
         desc="the classification of the input text, e.g., positive, negative, neutral"
     )
