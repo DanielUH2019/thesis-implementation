@@ -23,7 +23,8 @@ from signatures import (
     ZeroShotTextClassification,
     ZeroShotImageClassification,
     TeleprompterSignature,
-    SimpleAnswer
+    GenerateQuestion,
+    WikipediaRetrieval,
 )
 
 from hf_tasks import (
@@ -63,6 +64,7 @@ from metaphor_python import Metaphor
 import os
 import interpreter
 from dspy.teleprompt import BootstrapFewShot
+import dspy
 
 
 def run_algorithm_with_transformers_or_timm(
@@ -77,7 +79,9 @@ def run_algorithm_with_transformers_or_timm(
         config = TransformersBackendConfig(model=model_name, task=task.task_name)
         return TransformersBackend(config).run(*args)
     else:
-        raise ValueError(f"Model {model_name} , task {task} and args: {args} not supported")
+        raise ValueError(
+            f"Model {model_name} , task {task} and args: {args} not supported"
+        )
 
 
 @nice_repr
@@ -95,7 +99,6 @@ class TeleprompterAlgorithm(DspyAlgorithmBase):
 
     def run(self, metric: Callable, dspy_module: DspyModuleGenerator, trainset):
         teleprompter = BootstrapFewShot(metric=metric)
-        print('mira', trainset)
         return teleprompter.compile(dspy_module, trainset=trainset)
 
 
@@ -116,9 +119,12 @@ class GenerateAnswerAlgorithm(DspyAlgorithmBase):
             self.prompt_technique, self.get_signature()
         )
         kwargs = {"context": context, "question": question}
-        output_name = [k for k, v in self.get_signature().kwargs.items() if isinstance(v, OutputField)][0]
+        output_name = [
+            k
+            for k, v in self.get_signature().kwargs.items()
+            if isinstance(v, OutputField)
+        ][0]
         result = prompt_module(**kwargs)
-        print(f'hakuna: {result}')
         return result.completions[output_name]
 
 
@@ -139,10 +145,14 @@ class BasicQAAlgorithm(DspyAlgorithmBase):
             self.prompt_technique, self.get_signature()
         )
         kwargs = {"question": question}
-        output_name = [k for k, v in self.get_signature().kwargs.items() if isinstance(v, OutputField)][0]
+        output_name = [
+            k
+            for k, v in self.get_signature().kwargs.items()
+            if isinstance(v, OutputField)
+        ][0]
         result = prompt_module(**kwargs)
-        print(f'hakuna: {result}')
         return result.completions[output_name]
+
 
 # @nice_repr
 # class GenerateAndRunSearchQueryAlgorithm(DspyAlgorithmBase):
@@ -161,40 +171,24 @@ class BasicQAAlgorithm(DspyAlgorithmBase):
 #             self.prompt_technique, self.get_signature()
 #         )
 #         kwargs = {"question": question}
-#         output_name = [k for k, v in self.get_signature().kwargs.items() if isinstance(v, OutputField)][0]
+#         output_name = [
+#             k
+#             for k, v in self.get_signature().kwargs.items()
+#             if isinstance(v, OutputField)
+#         ][0]
 #         result = prompt_module(**kwargs)
-#         print(f'hakuna: {result}')
 #         search_query = result.completions[output_name]
 #         METAPHOR_API_KEY = os.getenv("METAPHOR_API_KEY")
 #         assert (
 #             METAPHOR_API_KEY is not None
 #         ), "You need to put a METAPHOR_API_KEY in a .env to be able to run search queries"
 #         metaphor = Metaphor(METAPHOR_API_KEY)
+#         if isinstance(search_query, list):
+#             search_query = search_query[0]
 #         search_response = metaphor.search(search_query, use_autoprompt=True)
 #         contents_result = search_response.get_contents()
-#         return [c.extract for c in contents_result.contents]
+#         return [c.extract for c in contents_result.contents][0]
 
-@nice_repr
-class SimpleAnswerAlgorithm(DspyAlgorithmBase):
-    def __init__(
-        self,
-        prompt_technique: CategoricalValue(COT_MODULE),
-    ):
-        self.prompt_technique = prompt_technique
-
-    @classmethod
-    def get_signature(cls) -> type[AlgorithmSignature]:
-        return SimpleAnswer
-
-    def run(self, input):
-        prompt_module = instantiate_prompt_module(
-            self.prompt_technique, self.get_signature()
-        )
-        kwargs = {"input": input}
-        output_name = [k for k, v in self.get_signature().kwargs.items() if isinstance(v, OutputField)][0]
-        result = prompt_module(**kwargs)
-        print(f'hakuna: {result}')
-        return result.completions[output_name]
 
 # @nice_repr
 # class ImageCaptioningAlgorithm(DspyAlgorithmBase):
@@ -266,26 +260,30 @@ class SimpleAnswerAlgorithm(DspyAlgorithmBase):
 #         )
 
 
-# @nice_repr
-# class SummarizeTextAlgorithm(DspyAlgorithmBase):
-#     def __init__(
-#         self,
-#         models: CategoricalValue(
-#             "facebook/bart-large-cnn",
-#             # "Falconsai/text_summarization",
-#             # "mbart-large-50-many-to-many-mmt",
-#         ),
-#     ):
-#         self.model_name = models
+@nice_repr
+class SummarizeTextAlgorithm(DspyAlgorithmBase):
+    def __init__(
+        self,
+        prompt_technique: CategoricalValue(COT_MODULE),
+    ):
+        self.prompt_technique = prompt_technique
 
-#     @classmethod
-#     def get_signature(cls) -> type[AlgorithmSignature]:
-#         return SummarizeText
+    @classmethod
+    def get_signature(cls) -> type[AlgorithmSignature]:
+        return SummarizeText
 
-#     def run(self, text):
-#         return run_algorithm_with_transformers_or_timm(
-#             self.model_name, SUMMARIZATION, text
-#         )
+    def run(self, text):
+        prompt_module = instantiate_prompt_module(
+            self.prompt_technique, self.get_signature()
+        )
+        kwargs = {"text": text}
+        output_name = [
+            k
+            for k, v in self.get_signature().kwargs.items()
+            if isinstance(v, OutputField)
+        ][0]
+        result = prompt_module(**kwargs)
+        return result.completions[output_name]
 
 
 # @nice_repr
@@ -305,7 +303,7 @@ class SimpleAnswerAlgorithm(DspyAlgorithmBase):
 #     def run(self, text):
 #         return run_algorithm_with_transformers_or_timm(
 #             self.model_name, TEXT_CLASSIFICATION, text
-#         )
+#         )[0]["label"]
 
 
 # @nice_repr
@@ -349,11 +347,86 @@ class SimpleAnswerAlgorithm(DspyAlgorithmBase):
 #     def run(self, image):
 #         return run_algorithm_with_transformers_or_timm(
 #             self.model_name, ZERO_SHOT_IMAGE_CLASSIFICATION, image
-        # )
+# )
+
+
+# @nice_repr
+# class CodeGeneratorAlgorithm(DspyAlgorithmBase):
+#     def __init__(
+#         self,
+#         prompt_technique: CategoricalValue(COT_MODULE),
+#     ) -> None:
+#         self.prompt_technique = prompt_technique
+
+#     @classmethod
+#     def get_signature(cls) -> type[AlgorithmSignature]:
+#         return CodeGenerator
+
+#     def run(self, context, instruction):
+#         prompt_module = instantiate_prompt_module(
+#             self.prompt_technique, self.get_signature()
+#         )
+#         kwargs = {"context": context, "instruction": instruction}
+#         output_name = [
+#             k
+#             for k, v in self.get_signature().kwargs.items()
+#             if isinstance(v, OutputField)
+#         ][0]
+#         result = prompt_module(**kwargs)
+#         code = result.completions[output_name]
+#         if not isinstance(self.prompt_technique, ProgramOfThought):
+#             interpreter.local = True
+#             interpreter.temperature = 0
+#             interpreter.model = "openhermes2.5-mistral"
+#             interpreter.conversation_history = False
+#             messages = interpreter.chat(f"Run this code and give me the result: {code}")
+#             return messages[0]["output"]
+#         return code
+
+
+# @nice_repr
+# class CodeGeneratorAlgorithm(DspyAlgorithmBase):
+#     def __init__(
+#         self,
+#         prompt_technique: CategoricalValue(POT_MODULE),
+#     ) -> None:
+#         self.prompt_technique = prompt_technique
+
+#     @classmethod
+#     def get_signature(cls) -> type[AlgorithmSignature]:
+#         return CodeGenerator
+
+#     def run(self, instruction):
+#         prompt_module = instantiate_prompt_module(
+#             self.prompt_technique, self.get_signature()
+#         )
+#         kwargs = {"instruction": instruction}
+#         output_name = [
+#             k
+#             for k, v in self.get_signature().kwargs.items()
+#             if isinstance(v, OutputField)
+#         ][0]
+#         result = prompt_module(**kwargs)
+#         return result.completions[output_name]
 
 
 @nice_repr
-class CodeGeneratorAlgorithm(DspyAlgorithmBase):
+class WikipediaRetrievalAlgorithm(DspyAlgorithmBase):
+    def __init__(self) -> None:
+        pass
+
+    @classmethod
+    def get_signature(cls) -> type[AlgorithmSignature]:
+        return WikipediaRetrieval
+
+    def run(self, question):
+        retrieval_module = dspy.Retrieve()
+        context = retrieval_module(question).passages
+        return context
+
+
+@nice_repr
+class GenerateQuestionAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
         prompt_technique: CategoricalValue(COT_MODULE),
@@ -362,22 +435,17 @@ class CodeGeneratorAlgorithm(DspyAlgorithmBase):
 
     @classmethod
     def get_signature(cls) -> type[AlgorithmSignature]:
-        return CodeGenerator
+        return GenerateQuestion
 
-    def run(self, context, instruction):
+    def run(self, text):
         prompt_module = instantiate_prompt_module(
             self.prompt_technique, self.get_signature()
         )
-        kwargs = {"context": context, "instruction": instruction}
-        output_name = [k for k, v in self.get_signature().kwargs.items() if isinstance(v, OutputField)][0]
+        kwargs = {"text": text}
+        output_name = [
+            k
+            for k, v in self.get_signature().kwargs.items()
+            if isinstance(v, OutputField)
+        ][0]
         result = prompt_module(**kwargs)
-        print(f'hakuna: {result}')
-        code = result.completions[output_name]
-        if not isinstance(self.prompt_technique, ProgramOfThought):
-            interpreter.local = True
-            interpreter.temperature = 0
-            interpreter.model = "openhermes2.5-mistral"
-            interpreter.conversation_history = False
-            messages = interpreter.chat(f"Run this code and give me the result: {code}")
-            return messages[0]["output"]
-        return code
+        return result.completions[output_name]
