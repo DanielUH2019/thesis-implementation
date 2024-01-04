@@ -25,6 +25,7 @@ from prompts import (
     instruction_to_extract_arguments_to_json,
     instruction_to_extract_arguments_to_json,
 )
+from guidance import models, gen, select
 
 
 class AlgorithmSignature(Signature):
@@ -153,38 +154,6 @@ class DspyPipelineSpace(GraphSpace):
         )
 
 
-# @nice_repr
-# class DspyPipeline:
-#     """Represents a sequence of algorithms.
-
-#     Each algorithm must have a `run` method declaring it's input and output type.
-#     """
-
-#     def __init__(
-#         self,
-#         algorithms: list[DspyAlgorithmBase],
-#         path_to_llm: str,
-#         examples_description: dict[str, dict[str, str]],
-#     ) -> None:
-#         self.algorithms = algorithms
-#         self.path_to_llm = path_to_llm
-#         self.examples_description = examples_description
-
-#     def run(self, trainset, metric: Callable):
-#         teleprompter = self.algorithms.pop()
-#         assert teleprompter.is_teleprompter()
-#         dspy_module_generator = DspyModuleGenerator(
-#             self.algorithms, self.path_to_llm, self.examples_description
-#         )
-
-#         compiled_program = teleprompter.run(
-#             metric=metric,
-#             dspy_module=dspy_module_generator,
-#             trainset=trainset,
-#         )
-#         return compiled_program
-
-
 @nice_repr
 class DspyPipeline:
     """Represents a sequence of algorithms.
@@ -216,6 +185,8 @@ class DspyPipeline:
         )
         return compiled_program
 
+        
+
 
 @nice_repr
 class DspyModuleGenerator(dspy.Module):
@@ -242,18 +213,10 @@ class DspyModuleGenerator(dspy.Module):
                     )
                 ]
             )
-        print("debo haber insertado", kwargs)
         final_output: Optional[Any] = None
-        print("alll data", memory.get_all_data())
         for i, algorithm in enumerate(self.algorithms):
-            # if i == 0:
-            #     args = self._extract_arguments_to_call_initial_algorithm(
-            #         algorithm=algorithm, **kwargs
-            #     )
-            # else:
-            print(f"antes de correr {memory.get_all_data()}")
             args = self._build_input_args(algorithm, memory)
-            print(f"builded args {args}")
+            # print(f"builded args {args} for algorithm {algorithm}")
             output_values = list(algorithm.run(**args))
             # inputs_to_maintain = set(
             #     algorithm.get_signature().inputs_fields_to_maintain().keys()
@@ -282,56 +245,6 @@ class DspyModuleGenerator(dspy.Module):
         prediction_to_return = dspy.Prediction(**prediction_kwargs)
         return prediction_to_return
 
-    # def _extract_arguments_to_call_initial_algorithm(
-    #     self, algorithm: DspyAlgorithmBase, **kwargs
-    # ) -> dict[str, Any]:
-    #     """Extract arguments related to an AlgorithmSignature from an instruction in natural language using an llm"""
-
-    #     # llm = Llama(self.path_to_llm, n_gpu_layers=-1)
-    #     signature = algorithm.get_signature()
-    #     fields = {
-    #         k: (v.annotation, ...)
-    #         for k, v in algorithm.get_signature().kwargs.items()
-    #         if isinstance(v, InputField)
-    #     }
-    #     DynamicSignatureModel = create_model("DynamicSignatureModel", **fields)
-
-    #     llm = outlines.models.transformers(self.path_to_llm, device="cuda")
-    #     generator = outlines.generate.json(llm, DynamicSignatureModel)
-    #     # instruction = f"""
-    #     #     Given the inputs: {kwargs}
-    #     #     And the schema: {algorithm.get_signature().kwargs}
-    #     #     Extract information from the instruction that match the schema
-    #     #     """
-    #     kwargs_with_descriptions = {k: v.desc for k, v in signature.kwargs.items()}
-    #     required_arguments = {
-    #         "arguments": [signature.kwargs.keys()],
-    #         "descriptions": kwargs_with_descriptions,
-    #     }
-    #     # pydantic_model, grammar_text = self._generate_grammar_from_signature(
-    #     #     algorithm.get_signature()
-    #     # )
-    #     # grammar = LlamaGrammar.from_string(grammar_text)
-
-    #     # response = llm(instruction, grammar=grammar, temperature=0.0)
-    #     prompt = instruction_to_extract_arguments_to_json(kwargs, required_arguments)
-    #     json_response = generator(prompt)
-    #     # json_response = response["choices"][0]["text"]
-    #     # print(f"schema {DynamicSignatureModel}")
-    #     assert isinstance(json_response, DynamicSignatureModel)
-    #     # print(f"generated json {json_response} with type: {type(json_response)}")
-    #     # model = DynamicSignatureModel.model_validate_json(json_response)
-    #     return json_response.model_dump()
-
-    # def _generate_grammar_from_signature(
-    #     self, signature: type[AlgorithmSignature]
-    # ) -> tuple[type[BaseModel], str]:
-
-    #     sequence = generator("Give me a character description")
-    #     converter = SchemaConverter({})
-    #     converter.visit(DynamicSignatureModel.model_json_schema(), "")
-    #     grammar_text = converter.format_grammar()
-    #     return DynamicSignatureModel, grammar_text
 
     def _build_input_args(
         self, algorithm: DspyAlgorithmBase, memory: Memory
@@ -415,30 +328,8 @@ class PipelineSpaceBuilder:
         for k, v in self.examples_description["inputs"].items():
             memory.insert([v], None)
         for a in algorithms_pool:
-            # current_signature = a.input_types()
-
             if not a.is_compatible_with(memory):
                 continue
-
-            # instruction = f"""\
-            #     Given the dataset_description: {dataset_description}\
-            #     can the following signature be used directly?: {repr(current_signature)}
-            # """
-            # lm = (
-            #     model
-            #     + context
-            #     + instruction
-            #     + f"Answer: {guidance.select(['yes', 'no'], name='answer')}"
-            # )
-            # prompt = instruction_to_extract_arguments_to_json(
-            #     dataset_description, repr(current_signature)
-            # )
-            # answer = outlines.generate.choice(llm, ["True", "False"])(prompt)
-            # if lm["answer"] == "no":
-            #     continue
-
-            # if answer == "False":
-            #     continue
 
             initial_valid_nodes.append(
                 DspyPipelineNode(
@@ -490,7 +381,7 @@ class PipelineSpaceBuilder:
         for start_node in initial_valid_nodes:
             initial_memory = Memory(str(uuid4()))
             output_types, inputs_to_mantain = start_node.algorithm.output_type()
-            print("output types", output_types)
+            # print("output types", output_types)
             initial_memory.insert([v.desc for k, v in output_types.items()], None)
             initial_memory.insert([v.desc for k, v in inputs_to_mantain.items()], None)
             self._dfs(
@@ -525,55 +416,19 @@ class PipelineSpaceBuilder:
         nx.draw_shell(G, with_labels=True, font_weight="bold")
         return pipeline_space
 
-    # def _dfs(
-    #     self,
-    #     G,
-    #     initial_valid_nodes: list[DspyPipelineNode],
-    #     pool: set[type[DspyAlgorithmBase]],
-    #     teleprompter_node: DspyPipelineNode,
-    #     registry: list[type[DspyAlgorithmBase]],
-    # ):
-    #     for start_node in initial_valid_nodes:
-    #         stack = [(start_node, {})]
-    #         closed_nodes = set()
-
-    #         # Memory to be used for simulating algorithms execution and stablish compatibility
-    #         memory = Memory()
-    # output_types = start_node.algorithm.output_type()
-    # memory.insert([x.desc for x in output_types[0]])
-    # memory.insert([x.desc for x in output_types[1]])
-    # memory.insert(list(start_node.algorithm.input_args()))
-    #         while stack:
-    #             node, node_matches = stack.pop()
-
-    #             # G.add_edge(node, teleprompter_node)
-    #             if node != start_node:
-
-    #             # Here are all the algorithms that could be added new at this point in the graph
-    #             for algorithm in pool:
-    #                 is_compatible, matches = algorithm.is_compatible_with(memory)
-    #                 if not is_compatible:
-    #                     continue
-
-    #                 # We never want to apply the same exact algorithm twice
-    #                 if algorithm == node.algorithm:
-    #                     continue
-
-    #                 p = DspyPipelineNode(
-    #                     algorithm=algorithm,
-    #                     registry=registry,
-    #                 )
-
-    #                 G.add_edge(node, p)
-
-    #                 if p not in closed_nodes and p not in initial_valid_nodes:
-    #                     stack.append((p, matches))
-
-    #             # TODO Find a way to check if the last node would be sufficient to generate a valid solution
-    #             # for a problem based on the dataset description, maybe with a dspy program
-    #             G.add_edge(node, teleprompter_node)
-
-    #             closed_nodes.add(node)
+    def _check_valid_output_algorithm(self, algorithm: type[DspyAlgorithmBase]):
+        llama2 = models.LlamaCpp(self.path_to_llm)
+        output_desc = list(self.examples_description['outputs'].values())[0]
+        algorithm_desc = algorithm.get_signature().__doc__
+        result = llama2 + f'''\
+            Can an algorithm with the description: {algorithm_desc}. 
+            solve a problem that requires the following output: {output_desc}.
+            ''' + select(['True', 'False'], name='answer')
+        
+        if result['answer'] == 'True':
+            return True
+        
+        return False
 
     def _dfs(
         self,
@@ -586,6 +441,7 @@ class PipelineSpaceBuilder:
         initial_valid_nodes: list[DspyPipelineNode],
         registry: list[type[DspyAlgorithmBase]],
     ):
+       
         for algorithm in pool:
             is_compatible, matches = algorithm.is_compatible_with(memory)
             if not is_compatible or algorithm == node.algorithm:
@@ -597,7 +453,9 @@ class PipelineSpaceBuilder:
             )
 
             G.add_edge(node, p)
-            G.add_edge(node, telepropmter_node)
+
+            if self._check_valid_output_algorithm(algorithm):
+                G.add_edge(node, telepropmter_node)
 
             if p not in closed_nodes and p not in initial_valid_nodes:
                 closed_nodes.add(p)
@@ -616,6 +474,7 @@ class PipelineSpaceBuilder:
                         cloned_memory.update(key, matches[key].desc)
 
                 cloned_memory.insert([v.desc for k, v in o.items()], None)
+                
                 self._dfs(
                     G,
                     p,
