@@ -11,11 +11,11 @@ class TeleprompterSignature(AlgorithmSignature):
 
 
 class GenerateQuestion(AlgorithmSignature):
-    """Generate a question from an instruction that can be used to better understand the instruction."""
+    """Generate a question from a text that can be used to better understand the text."""
 
-    instruction = InputField(desc="the instruction to be understood")
+    text = InputField(desc="the text to be understood")
     question = OutputField(
-        desc="a question that can be asked to better understand the instruction"
+        desc="a question that can be asked to better understand a text"
     )
 
     @classmethod
@@ -26,18 +26,12 @@ class GenerateQuestion(AlgorithmSignature):
 class GenerateSearchQuery(AlgorithmSignature):
     """Write and run simple search query that will help answer a complex question."""
 
-    question = InputField(desc='question')
-    answer = OutputField(desc='may contain relevant facts')
+    question = InputField(desc="question")
+    answer = OutputField(desc="may contain relevant facts")
 
-
-class SimpleAnswer(AlgorithmSignature):
-    """Directly respond to an input text"""
-
-    input = InputField(desc='quesion or instruction')
-    aswer = OutputField(desc='answer to a question')
 
 class GenerateAnswer(AlgorithmSignature):
-    """Answer questions with short factoid answers."""
+    """Answer questions with short factoid answers using some relevant facts."""
 
     context = InputField(desc="may contain relevant facts")
     question = InputField()
@@ -107,7 +101,14 @@ class ZeroShotImageClassification(AlgorithmSignature):
 
 
 class CodeGenerator(AlgorithmSignature):
-    """Generate code to respond to an instruction"""
+    """Generate code that solves a problem or answer a question"""
 
-    context = InputField()
-    instruction = InputField()
+    instruction = InputField(desc="problem or question that can be solve through programming")
+    answer = OutputField()
+
+
+class WikipediaRetrieval(AlgorithmSignature):
+    """Retrieve information from wikipedia to provide useful facts"""
+
+    question = InputField(desc="question")
+    context = OutputField(desc="may contain relevant facts")
