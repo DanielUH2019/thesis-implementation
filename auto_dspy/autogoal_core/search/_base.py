@@ -9,7 +9,7 @@ import json
 
 import autogoal_core.logging
 
-from autogoal_core.utils import RestrictedWorkerByJoin, Min, Gb
+from autogoal_core.utils import RestrictedWorkerByJoin, Min, Gb, Hour
 from autogoal_core.sampling import ReplaySampler
 from rich.progress import Progress
 from rich.panel import Panel
@@ -26,12 +26,12 @@ class SearchAlgorithm:
         maximize=(True,),
         errors="raise",
         early_stop=0.5,
-        evaluation_timeout: int = 1 * Min,
-        memory_limit: int = 4 * Gb,
-        search_timeout: int = 5 * Min,
+        evaluation_timeout: int = 2 * Hour,
+        memory_limit: int = 24 * Gb,
+        search_timeout: int = 7 * Hour,
         random_state: int|None = None,
         target_fn=None,
-        allow_duplicates=True,
+        allow_duplicates=False,
         logger=None,
         ranking_fn=None,
     ):
@@ -109,11 +109,9 @@ class SearchAlgorithm:
         best_fns = []
 
         logger.begin(generations, self._pop_size)
-
         try:
             while generations > 0:
                 stop = False
-
                 logger.start_generation(generations, best_solutions, best_fns)
                 self._start_generation()
 
@@ -127,6 +125,7 @@ class SearchAlgorithm:
 
                     try:
                         solution = self._generate()
+                
                     except Exception as e:
                         logger.error(
                             "Error while generating solution: %s" % e, solution
@@ -137,9 +136,17 @@ class SearchAlgorithm:
                         continue
 
                     try:
+                        
                         logger.sample_solution(solution)
                         fn = self._fitness_fn(solution)
+                        
+                        with open("measure_time_gsm8k_2.txt", "a") as f:
+                            f.write(f"{time.time() - start_time}, {fn[0]} with pipeline {repr(solution)} \n")
                     except Exception as e:
+                        # raise e
+                        # print(e)
+                        with open("exceptions_gsm8k.txt_2", "a") as f:
+                            f.write(f"{time.time() - start_time}, exception: {e} in pipeline {repr(solution)} \n")
                         fn = self._worst_fns
                         logger.error(e, solution)
 
