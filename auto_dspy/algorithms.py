@@ -28,11 +28,12 @@ from signatures import (
 )
 
 from hf_tasks import (
+    QUESTION_ANSWERING,
     Task,
     IMAGE_CLASSIFICATION,
     TRANSLATION,
     SUMMARIZATION,
-    TEXT_CLASSIFICATION,
+    SENTIMENT_ANALYSIS,
     TEXT_GENERATION,
     TOKEN_CLASSIFICATION,
     ZERO_SHOT_CLASSIFICATION,
@@ -61,8 +62,6 @@ from model_backends import (
 from autogoal_core.utils import nice_repr
 
 from metaphor_python import Metaphor
-import os
-import interpreter
 from dspy.teleprompt import BootstrapFewShot
 import dspy
 
@@ -106,25 +105,32 @@ class TeleprompterAlgorithm(DspyAlgorithmBase):
 class GenerateAnswerAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
-        prompt_technique: CategoricalValue(COT_MODULE),
+        method: CategoricalValue(
+            COT_MODULE,
+            "deepset/tinyroberta-squad2",
+            "distilbert-base-cased-distilled-squad",
+        ),
     ):
-        self.prompt_technique = prompt_technique
+        self.method = method
 
     @classmethod
     def get_signature(cls) -> type[AlgorithmSignature]:
         return GenerateAnswer
 
     def run(self, context, question):
-        prompt_module = instantiate_prompt_module(
-            self.prompt_technique, self.get_signature()
-        )
-        kwargs = {"context": context, "question": question}
+        qa_input = {"context": context, "question": question}
+        if self.method != COT_MODULE:
+            response = run_algorithm_with_transformers_or_timm(
+                self.method, QUESTION_ANSWERING, qa_input
+            )
+            return response["answer"]
+        prompt_module = instantiate_prompt_module(self.method, self.get_signature())
         output_name = [
             k
             for k, v in self.get_signature().kwargs.items()
             if isinstance(v, OutputField)
         ][0]
-        result = prompt_module(**kwargs)
+        result = prompt_module(**qa_input)
         return result.completions[output_name]
 
 
@@ -264,18 +270,61 @@ class BasicQAAlgorithm(DspyAlgorithmBase):
 class SummarizeTextAlgorithm(DspyAlgorithmBase):
     def __init__(
         self,
-        prompt_technique: CategoricalValue(COT_MODULE),
+        method: CategoricalValue(
+            COT_MODULE,
+            "Falconsai/text_summarization",
+            "facebook/bart-large-cnn",
+        ),
     ):
-        self.prompt_technique = prompt_technique
+        self.method = method
 
     @classmethod
     def get_signature(cls) -> type[AlgorithmSignature]:
         return SummarizeText
 
     def run(self, text):
-        prompt_module = instantiate_prompt_module(
-            self.prompt_technique, self.get_signature()
+        if self.method == COT_MODULE:
+            prompt_module = instantiate_prompt_module(
+                self.method, self.get_signature()
+            )
+            kwargs = {"text": text}
+            output_name = [
+                k
+                for k, v in self.get_signature().kwargs.items()
+                if isinstance(v, OutputField)
+            ][0]
+            result = prompt_module(**kwargs)
+            return result.completions[output_name]
+
+        response = run_algorithm_with_transformers_or_timm(
+            self.method, SUMMARIZATION, text
         )
+        return response[0]["summary_text"]
+
+
+@nice_repr
+class TextClassificationAlgorithm(DspyAlgorithmBase):
+    def __init__(
+        self,
+        method: CategoricalValue(
+            COT_MODULE,
+            "cardiffnlp/twitter-roberta-base-sentiment-latest",
+            "distilbert-base-uncased-finetuned-sst-2-english",
+        ),
+    ):
+        self.method = method
+
+    @classmethod
+    def get_signature(cls) -> type[AlgorithmSignature]:
+        return TextClassification
+
+    def run(self, text):
+        if self.method != COT_MODULE:
+            return run_algorithm_with_transformers_or_timm(
+                self.method, SENTIMENT_ANALYSIS, text
+            )[0]["label"]
+
+        prompt_module = instantiate_prompt_module(self.method, self.get_signature())
         kwargs = {"text": text}
         output_name = [
             k
@@ -284,26 +333,6 @@ class SummarizeTextAlgorithm(DspyAlgorithmBase):
         ][0]
         result = prompt_module(**kwargs)
         return result.completions[output_name]
-
-
-# @nice_repr
-# class TextClassificationAlgorithm(DspyAlgorithmBase):
-#     def __init__(
-#         self,
-#         models: CategoricalValue(
-#             "distilbert-base-uncased",
-#         ),
-#     ):
-#         self.model_name = models
-
-#     @classmethod
-#     def get_signature(cls) -> type[AlgorithmSignature]:
-#         return TextClassification
-
-#     def run(self, text):
-#         return run_algorithm_with_transformers_or_timm(
-#             self.model_name, TEXT_CLASSIFICATION, text
-#         )[0]["label"]
 
 
 # @nice_repr

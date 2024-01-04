@@ -103,9 +103,9 @@ TABLE_QUESTION_ANSWERING = Task(
     short_downstream_task_description="Table Question Answering (Table QA) is the answering a question about an information on a given table.",
 )
 
-TEXT_CLASSIFICATION = Task(
+SENTIMENT_ANALYSIS = Task(
     high_level_task_name=GeneralTasks.NLP,
-    task_name="text-classification",
+    task_name="sentiment-analysis",
     short_downstream_task_description="Text Classification is the task of assigning a label or class to a given text.",
 )
 
@@ -156,6 +156,7 @@ TEXT_TO_SPEECH = Task(
     task_name="text-to-speech",
     short_downstream_task_description="Text-to-Speech (TTS) is the task of generating natural sounding speech given text input. ",
 )
+
 
 
 # class Tabular(Task):

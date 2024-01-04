@@ -13,7 +13,14 @@ TIMM_MODELS_SUPPORTED = [
 ]
 
 TRANSFORMERS_MODELS_SUPPORTED = [
-    "distilbert-base-uncased"
+    "distilbert-base-uncased",
+    "facebook/bart-large-cnn",
+    "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli",
+    "cardiffnlp/twitter-roberta-base-sentiment-latest",
+    "distilbert-base-uncased-finetuned-sst-2-english",
+    "Falconsai/text_summarization",
+    "deepset/tinyroberta-squad2",
+    "distilbert-base-cased-distilled-squad",
 ]
 
 LLAMA_CPP_SUPPORTED_MODELS = [
