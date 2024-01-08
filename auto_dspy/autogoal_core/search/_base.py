@@ -28,7 +28,7 @@ class SearchAlgorithm:
         early_stop=0.5,
         evaluation_timeout: int = 2 * Hour,
         memory_limit: int = 24 * Gb,
-        search_timeout: int = 7 * Hour,
+        search_timeout: int = 8 * Hour,
         random_state: int|None = None,
         target_fn=None,
         allow_duplicates=False,
@@ -140,12 +140,12 @@ class SearchAlgorithm:
                         logger.sample_solution(solution)
                         fn = self._fitness_fn(solution)
                         
-                        with open("measure_time_gsm8k_2.txt", "a") as f:
+                        with open("measure_time_gsm8k_definitive.txt", "a") as f:
                             f.write(f"{time.time() - start_time}, {fn[0]} with pipeline {repr(solution)} \n")
                     except Exception as e:
                         # raise e
                         # print(e)
-                        with open("exceptions_gsm8k.txt_2", "a") as f:
+                        with open("exceptions_gsm8k_definitive.txt", "a") as f:
                             f.write(f"{time.time() - start_time}, exception: {e} in pipeline {repr(solution)} \n")
                         fn = self._worst_fns
                         logger.error(e, solution)

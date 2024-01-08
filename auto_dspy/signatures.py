@@ -103,7 +103,9 @@ class ZeroShotImageClassification(AlgorithmSignature):
 class CodeGenerator(AlgorithmSignature):
     """Generate code that solves a problem or answer a question"""
 
-    instruction = InputField(desc="problem or question that can be solve through programming")
+    instruction = InputField(
+        desc="problem or question that can be solve through programming"
+    )
     answer = OutputField()
 
 
